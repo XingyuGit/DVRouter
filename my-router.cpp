@@ -1,16 +1,18 @@
 #include <boost/asio.hpp>
-#include <boost/shared_ptr.hpp>
+//#include <boost/shared_ptr.hpp>
 #include <boost/array.hpp>
+#include <boost/bind.hpp>
 #include <iostream>
 #include <string>
 #include <stdint.h>
 
 using namespace std;
+using namespace boost::asio::ip;
 
 class MyRouter
 {
 public:
-    udp_server(boost::asio::io_service& io_service, uint16_t port)
+    MyRouter(boost::asio::io_service& io_service, uint16_t port)
     : socket_(io_service, udp::endpoint(udp::v4(), port))
     {
         start_receive();
@@ -18,9 +20,10 @@ public:
     
     void send(string message, uint16_t port)
     {
-        send_endpoint = udp::endpoint(udp::v4(), port)
-        socket_.async_send_to(boost::asio::buffer(message), send_endpoint,
-                              boost::bind(&handle_send, boost::asio::placeholders::error,
+        udp::endpoint sendee_endpoint = udp::endpoint(udp::v4(), port);
+        socket_.async_send_to(boost::asio::buffer(message), sendee_endpoint,
+                              boost::bind(&MyRouter::handle_send, this, message,
+                                          boost::asio::placeholders::error,
                                           boost::asio::placeholders::bytes_transferred));
     }
     
@@ -28,7 +31,7 @@ private:
     void start_receive()
     {
         socket_.async_receive_from(boost::asio::buffer(recv_buffer_), remote_endpoint_,
-                                   boost::bind(&udp_server::handle_receive, this,
+                                   boost::bind(&MyRouter::handle_receive, this,
                                                boost::asio::placeholders::error,
                                                boost::asio::placeholders::bytes_transferred));
     }
@@ -39,11 +42,15 @@ private:
         {
             //            boost::shared_ptr<string> message(new string(make_daytime_string()));
             //            socket_.async_send_to(boost::asio::buffer(*message), remote_endpoint_,
-            //                                  boost::bind(&udp_server::handle_send, this, message));
+            //                                  boost::bind(&MyRouter::handle_send, this, message));
             
-            string message = "message";
+            string recv_str(recv_buffer_.begin(), recv_buffer_.begin() + bytes_recvd);
+            cout << "async_receive_from message='" << recv_str << "'" << endl;
+            cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
+            
+            string message = "hello";
             socket_.async_send_to(boost::asio::buffer(message), remote_endpoint_,
-                                  boost::bind(&udp_server::handle_send, this, message,
+                                  boost::bind(&MyRouter::handle_send, this, message,
                                               boost::asio::placeholders::error,
                                               boost::asio::placeholders::bytes_transferred));
             
