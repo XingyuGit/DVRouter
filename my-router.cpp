@@ -19,6 +19,15 @@ struct Interface {
     int link_cost;
 };
 
+typedef vector<pair<dest_id, cost> > DV;
+
+struct RTRecord {
+    string dest_id;
+    int cost;
+    uint16_t outgoing_port;
+    uint16_t dest_port;
+};
+
 class MyRouter
 {
     const static int MAX_LENGTH = 1024;
@@ -29,6 +38,7 @@ public:
     io_service(io_service), id(id), neighbors(neighbors)
     {
         start_receive();
+        // periodically advertise its distance vector to each of its neighbors every 5 seconds.
     }
     
     void broadcast(string message)
@@ -89,9 +99,10 @@ private:
     boost::asio::io_service& io_service;
     string id;
     vector<Interface> neighbors;
-    
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
+    // id => RTRecord
+    map<string, RTRecord> RoutingTable;
 };
 
 int main(int argc, char** argv)
