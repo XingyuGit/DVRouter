@@ -21,9 +21,8 @@ struct Interface {
 
 class MyRouter
 {
-public:
     const static int MAX_LENGTH = 1024;
-    
+public:
     MyRouter(boost::asio::io_service& io_service, string id,
              uint16_t local_port, vector<Interface> neighbors)
     : sock(io_service, udp::endpoint(udp::v4(), local_port)),
@@ -53,16 +52,13 @@ public:
 private:
     void start_receive()
     {
-        udp::endpoint remote_endpoint;
-        boost::array<char,MAX_LENGTH> recv_buffer;
         sock.async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
-                                boost::bind(&MyRouter::handle_receive, this, remote_endpoint,
-                                            recv_buffer, boost::asio::placeholders::error,
+                                boost::bind(&MyRouter::handle_receive, this,
+                                            boost::asio::placeholders::error,
                                             boost::asio::placeholders::bytes_transferred));
     }
     
-    void handle_receive(udp::endpoint remote_endpoint, boost::array<char,MAX_LENGTH> recv_buffer,
-                        const boost::system::error_code& error, size_t bytes_recvd)
+    void handle_receive(const boost::system::error_code& error, size_t bytes_recvd)
     {
         if (!error || error == boost::asio::error::message_size)
         {
@@ -93,6 +89,9 @@ private:
     boost::asio::io_service& io_service;
     string id;
     vector<Interface> neighbors;
+    
+    udp::endpoint remote_endpoint;
+    boost::array<char,MAX_LENGTH> recv_buffer;
 };
 
 int main(int argc, char** argv)
