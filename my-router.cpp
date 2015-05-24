@@ -38,7 +38,7 @@ public:
     io_service(io_service), id(id), neighbors(neighbors)
     {
         start_receive();
-        // periodically advertise its distance vector to each of its neighbors every 5 seconds.
+        // TODO: periodically advertise its distance vector to each of its neighbors every 5 seconds.
     }
     
     void broadcast(string message)
@@ -77,6 +77,12 @@ private:
             cout << "async_receive_from message='" << recv_str << "'" << endl;
             cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
             
+            // TODO: recaculate routing tables
+            
+            // TODO: if any change, broadcast to neighbors (using broadcast())
+            
+            // below code only for debug (no meaning)
+            
             string message = "hello";
             sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
                                boost::bind(&MyRouter::handle_send, this, message,
@@ -101,8 +107,7 @@ private:
     vector<Interface> neighbors;
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
-    // id => RTRecord
-    map<string, RTRecord> RoutingTable;
+    map<string, RTRecord> RoutingTable; // id => RTRecord
 };
 
 int main(int argc, char** argv)
