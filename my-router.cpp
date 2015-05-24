@@ -11,8 +11,8 @@
 using namespace std;
 using namespace boost::asio::ip;
 
-struct interface {
-    interface(string id, int port, int link_cost)
+struct Interface {
+    Interface(string id, int port, int link_cost)
     : id(id), port(port), link_cost(link_cost) {}
     string id;
     uint16_t port;
@@ -23,43 +23,42 @@ class MyRouter
 {
 public:
     MyRouter(boost::asio::io_service& io_service, string id,
-             vector<interface> neighbors)
-        : io_service(io_service), id(id), neighbors(neighbors)
+             uint16_t local_port, vector<Interface> neighbors)
+    : sock(io_service, udp::endpoint(udp::v4(), local_port)),
+    io_service(io_service), id(id), neighbors(neighbors)
     {
-        for (auto& i : neighbors)
-        {
-            udp::socket* sock = new udp::socket(io_service, udp::endpoint(udp::v4(), i.port));
-            sockets.push_back(sock);
-            start_receive(sock);
-        }
+        start_receive();
     }
     
     void broadcast(string message)
     {
-        for (auto& sock : sockets)
+        for (auto& interface : neighbors)
         {
-            send(message, &sock);
+            udp::endpoint sendee_endpoint(udp::v4(), interface.port);
+            cout << "Send to " << sendee_endpoint << endl;
+            send(message, sendee_endpoint);
         }
     }
     
-    void send(string message, udp::socket* sock)
+    void send(string message, udp::endpoint sendee_endpoint)
     {
-        sock->async_send_to(boost::asio::buffer(message), sendee_endpoint,
-                              boost::bind(&MyRouter::handle_send, this, message,
-                                          boost::asio::placeholders::error,
-                                          boost::asio::placeholders::bytes_transferred));
+        sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
+                           boost::bind(&MyRouter::handle_send, this, message,
+                                       boost::asio::placeholders::error,
+                                       boost::asio::placeholders::bytes_transferred));
     }
     
 private:
-    void start_receive(udp::socket* sock)
+    void start_receive()
     {
-        sock->async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
-                                   boost::bind(&MyRouter::handle_receive, this, sock,
-                                               boost::asio::placeholders::error,
-                                               boost::asio::placeholders::bytes_transferred));
+        udp::endpoint remote_endpoint;
+        sock.async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
+                                boost::bind(&MyRouter::handle_receive, this, remote_endpoint,
+                                            boost::asio::placeholders::error,
+                                            boost::asio::placeholders::bytes_transferred));
     }
     
-    void handle_receive(udp::socket* sock, const boost::system::error_code& error,
+    void handle_receive(udp::endpoint remote_endpoint, const boost::system::error_code& error,
                         size_t bytes_recvd)
     {
         if (!error || error == boost::asio::error::message_size)
@@ -69,13 +68,13 @@ private:
             cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
             
             string message = "hello";
-            sock->async_send_to(boost::asio::buffer(message), sock->remote_endpoint(),
-                                  boost::bind(&MyRouter::handle_send, this, message,
-                                              boost::asio::placeholders::error,
-                                              boost::asio::placeholders::bytes_transferred));
+            sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
+                               boost::bind(&MyRouter::handle_send, this, message,
+                                           boost::asio::placeholders::error,
+                                           boost::asio::placeholders::bytes_transferred));
             
             // continue listening
-            start_receive(sock);
+            start_receive();
         }
     }
     
@@ -86,16 +85,12 @@ private:
         cout << "async_send_to return " << error << ": " << bytes_transferred << " transmitted" << endl;
     }
     
+    udp::socket sock;
     boost::asio::io_service& io_service;
     string id;
-    vector<interface> neighbors;
-    boost::ptr_vector<udp::socket> sockets;
-    enum { max_length = 1024};
+    vector<Interface> neighbors;
+    enum { max_length = 1024 };
     boost::array<char,max_length> recv_buffer;
-    
-    // temp var
-    udp::endpoint remote_endpoint;
-    udp::endpoint sendee_endpoint;
 };
 
 int main(int argc, char** argv)
@@ -103,10 +98,12 @@ int main(int argc, char** argv)
     if (argc != 2)
     {
         cout << "Wrong arguments. Correct: ./my-router <id>" << endl;
+        return 0;
     }
     
     string id = string(argv[1]);
-    vector<interface> interfaces;
+    uint16_t local_port = 0;
+    vector<Interface> interfaces;
     
     ifstream initfile("init.txt");
     string line;
@@ -116,16 +113,25 @@ int main(int argc, char** argv)
         boost::split(tokens, line, boost::is_any_of(","));
         string src_router = tokens[0];
         string dest_router = tokens[1];
-        string src_port = tokens[2];
-        string link_cost = tokens[3];
+        uint16_t port = stoi(tokens[2]);
+        int link_cost = stoi(tokens[3]);
         
         if (id.compare(src_router) == 0) {
-            interfaces.push_back(interface(dest_router, stoi(src_port), stoi(link_cost)));
+            interfaces.push_back(Interface(dest_router, port, link_cost));
+        }
+        
+        if (local_port == 0 && id.compare(dest_router) == 0) {
+            local_port = port;
         }
     }
     
+    if (local_port == 0) {
+        cerr << "No port number for router " << id << endl;
+        return 0;
+    }
+    
     boost::asio::io_service io_service;
-    MyRouter rt(io_service, id, interfaces);
+    MyRouter rt(io_service, id, local_port, interfaces);
     io_service.run();
     
     return 0;
