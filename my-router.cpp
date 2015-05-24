@@ -19,7 +19,7 @@ struct Interface {
     int link_cost;
 };
 
-typedef vector<pair<dest_id, cost> > DV;
+typedef vector<pair<string, int> > DV; // (dest_id, cost)
 
 struct RTRecord {
     string dest_id;
