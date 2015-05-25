@@ -47,6 +47,7 @@ public:
     {
         start_receive();
         // TODO: periodically advertise its distance vector to each of its neighbors every 5 seconds.
+       
     }
     
     void broadcast(string message)
