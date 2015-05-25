@@ -32,6 +32,7 @@ struct RTEntry {
 };
 
 
+
 struct DVMsg {
     DVMsg(string src_id, map<string,int>  dv)
     : src_id(src_id), dv(dv) {}
@@ -52,6 +53,7 @@ struct DVMsg {
         return message;
     }
     
+
     static DVMsg fromString(string str)
     {
         // decode string to object
@@ -74,6 +76,7 @@ struct DVMsg {
     
     string src_id;
     map<string,int>  dv;
+
 };
 
 class MyRouter
@@ -112,10 +115,21 @@ public:
                                        boost::asio::placeholders::bytes_transferred));
     }
     
-private:
-    DVMsg get_dvmsg()
+    // return true (changed) / false (unchanged)
+    bool dv_change(string dest_id, int cost)
     {
-        // iterate the RouteTable and construct the DVMsg
+        if (dv.count(dest_id) > 0)
+        {
+            dv[dest_id] = cost;
+            return true;
+        }
+        return false;
+    }
+    
+private:
+    DVMsg dvmsg()
+    {
+        return DVMsg(id, dv);
     }
     
     void start_receive()
@@ -185,6 +199,7 @@ private:
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RTEntry> RouteTable; // id => RTEntry
     DVMsg dvmsg;
+
 };
 
 int main(int argc, char** argv)
@@ -210,11 +225,13 @@ int main(int argc, char** argv)
         uint16_t port = stoi(tokens[2]);
         int link_cost = stoi(tokens[3]);
         
-        if (id.compare(src_router) == 0) {
+        if (id.compare(src_router) == 0)
+        {
             interfaces.push_back(Interface(dest_router, port, link_cost));
         }
         
-        if (local_port == 0 && id.compare(dest_router) == 0) {
+        if (local_port == 0 && id.compare(dest_router) == 0)
+        {
             local_port = port;
         }
     }
