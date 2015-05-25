@@ -43,6 +43,16 @@ struct DVMsg {
     DVMsg(string src_id, vector<DVElem> dv)
     : src_id(src_id), dv(dv) {}
     
+    string toString()
+    {
+        // encode object to string
+    }
+    
+    static DVMsg fromString()
+    {
+        // decode string to object
+    }
+    
     string src_id;
     vector<DVElem> dv;
 };
@@ -83,7 +93,8 @@ public:
     }
     
 private:
-    DVMsg get_dvmsg() {
+    DVMsg get_dvmsg()
+    {
         // iterate the RouteTable and construct the DVMsg
     }
     
