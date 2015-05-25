@@ -14,12 +14,17 @@ using namespace boost::asio::ip;
 struct Interface {
     Interface(string id, int port, int link_cost)
     : id(id), port(port), link_cost(link_cost) {}
+    
     string id;
     uint16_t port;
     int link_cost;
 };
 
 struct RTEntry {
+    RTEntry(string dest_id, int cost, uint16_t outgoing_port, uint16_t dest_port)
+    : dest_id(dest_id), cost(cost), outgoing_port(outgoing_port),
+    dest_port(dest_port) {}
+    
     string dest_id;
     int cost;
     uint16_t outgoing_port;
@@ -27,11 +32,17 @@ struct RTEntry {
 };
 
 struct DV {
+    DV(string dest_id, int cost)
+    : dest_id(dest_id), cost(cost) {}
+    
     string dest_id;
     int cost;
 };
 
 struct DVMsg {
+    DVMsg(string src_id, vector<DV> dvs)
+    : src_id(src_id), dvs(dvs) {}
+    
     string src_id;
     vector<DV> dvs;
 };
