@@ -93,6 +93,7 @@ public:
             dv[id] = interface.cost;
             RouteTable[id] = RTEntry(interface.cost, local_port, interface.port);
         }
+        dv[id] = 0; // dv to itself is zero
         
         // periodically advertise its distance vector to each of its neighbors every 5 seconds.
         
@@ -111,16 +112,19 @@ public:
         for (auto& i : neighbors)
         {
             Interface interface = i.second;
+            cout << id << " Sent to " << i.first << ": " << message << endl;
             udp::endpoint sendee_endpoint(udp::v4(), interface.port);
-            cout << "Send to " << sendee_endpoint << endl;
             send(message, sendee_endpoint);
         }
+        cout << endl;
     }
     
     void send(string message, udp::endpoint sendee_endpoint)
     {
+//        cout << "async_send_to endpoint=" << sendee_endpoint << endl;
+//        cout << "async_send_to message='" << message << "'" << endl;
         sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
-                           boost::bind(&MyRouter::handle_send, this, message,
+                           boost::bind(&MyRouter::handle_send, this,
                                        boost::asio::placeholders::error,
                                        boost::asio::placeholders::bytes_transferred));
     }
@@ -151,15 +155,23 @@ private:
         if (!error || error == boost::asio::error::message_size)
         {
             string recv_str(recv_buffer.begin(), recv_buffer.begin() + bytes_recvd);
-            cout << "async_receive_from endpoint=" << remote_endpoint << endl;
-            cout << "async_receive_from message='" << recv_str << "'" << endl;
-            cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
+//            cout << "async_receive_from endpoint=" << remote_endpoint << endl;
+//            cout << "async_receive_from message='" << recv_str << "'" << endl;
+//            cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
+//            cout << endl;
+            
+            
             
             // recaculate routing tables
-            bool has_change = false;
+            
             DVMsg dvm = DVMsg::fromString(recv_str);
+            
+            cout << id << " Received from " << dvm.src_id << ": " << recv_str << endl;
+            cout << endl;
+            
             int distance = dv[dvm.src_id];
             map<string, int> m = dvm.dv;
+            bool has_change = false;
             
             for (auto it=m.begin(); it!=m.end(); ++it)
             {
@@ -203,11 +215,11 @@ private:
         }
     }
     
-    void handle_send(string message, const boost::system::error_code& error,
+    void handle_send(const boost::system::error_code& error,
                      std::size_t bytes_transferred)
     {
-        cout << "async_send_to message='" << message << "'" << endl;
-        cout << "async_send_to return " << error << ": " << bytes_transferred << " transmitted" << endl;
+//        cout << "async_send_to return " << error << ": " << bytes_transferred << " transmitted" << endl;
+//        cout << endl;
     }
     
     udp::socket sock;
