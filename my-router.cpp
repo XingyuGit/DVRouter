@@ -31,30 +31,49 @@ struct RTEntry {
     uint16_t dest_port;
 };
 
-struct DVElem {
-    DVElem(string dest_id, int cost)
-    : dest_id(dest_id), cost(cost) {}
-    
-    string dest_id;
-    int cost;
-};
 
 struct DVMsg {
-    DVMsg(string src_id, vector<DVElem> dv)
+    DVMsg(string src_id, map<string,int>  dv)
     : src_id(src_id), dv(dv) {}
     
     string toString()
     {
         // encode object to string
+        string message = "";
+        message += src_id;
+        message += ":";
+        for(auto it = dv.begin(); it != dv.end(); ++it){
+            message += it->first;
+            message += ",";
+            message += to_string(it->second);
+            message += ";";
+        }
+        message += " ";
+        return message;
     }
     
-    static DVMsg fromString()
+    static DVMsg fromString(string str)
     {
         // decode string to object
+        int i = str.find(":");
+        string id = str.substr(0,i);
+        str = str.substr(i+1);
+        map<string, int> m;
+        while(str.find(";")!=string::npos){
+            i = str.find(",");
+            string d_id = str.substr(0,i);
+            str = str.substr(i+1);
+            i = str.find(";");
+            int c = stoi(str.substr(0,i),nullptr,10);
+            m[d_id] = c;
+            str = str.substr(i+1);
+        }
+        return DVMsg(id,m);
+
     }
     
     string src_id;
-    vector<DVElem> dv;
+    map<string,int>  dv;
 };
 
 class MyRouter
@@ -69,7 +88,8 @@ public:
         start_receive();
         // TODO: periodically advertise its distance vector to each of its neighbors every 5 seconds.
         for(;;){
-
+            broadcast(dvmsg.toString());
+            sleep(5000);    
         }
        
     }
@@ -116,8 +136,26 @@ private:
             cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
             
             // TODO: recaculate routing tables
-            
+            bool has_change = false;
+            DVMsg dvm = DVMsg::fromString(recv_str);
+            int distance = dvmsg.dv[dvm.src_id]; 
+
+            for(auto it=m.begin(); it!=m.end(); ++it){
+                if(it->second<INT_MAX){
+                    if((it->second)+distance < dvmsg.dv)[it->first]){
+                        (dvmsg.dv)[it->first] = (it->second) + distance;
+                        has_change = true;
+                    }
+                }
+            }
+
+
+
             // TODO: if any change, broadcast to neighbors (using broadcast())
+
+            if(has_change){
+                broadcast(dvmsg.toString());
+            }
             
             // below code only for debug (no meaning)
             
@@ -146,7 +184,7 @@ private:
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RTEntry> RouteTable; // id => RTEntry
-    
+    DVMsg dvmsg;
 };
 
 int main(int argc, char** argv)
