@@ -70,8 +70,7 @@ public:
         // TODO: periodically advertise its distance vector to each of its neighbors every 5 seconds.
     }
     
-    template<typename MsgType>
-    void broadcast(MsgType message)
+    void broadcast(string message)
     {
         for (auto& interface : neighbors)
         {
@@ -81,8 +80,7 @@ public:
         }
     }
     
-    template<typename MsgType>
-    void send(MsgType message, udp::endpoint sendee_endpoint)
+    void send(string message, udp::endpoint sendee_endpoint)
     {
         sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
                            boost::bind(&MyRouter::handle_send, this, message,
