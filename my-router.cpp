@@ -12,26 +12,23 @@ using namespace std;
 using namespace boost::asio::ip;
 
 struct Interface {
-    Interface(string id, int port, int link_cost)
-    : id(id), port(port), link_cost(link_cost) {}
+    Interface(uint16_t port, int cost)
+    : port(port), cost(cost) {}
     
-    string id;
     uint16_t port;
-    int link_cost;
+    int cost;
 };
 
 struct RTEntry {
-    RTEntry(string dest_id, int cost, uint16_t outgoing_port, uint16_t dest_port)
-    : dest_id(dest_id), cost(cost), outgoing_port(outgoing_port),
-    dest_port(dest_port) {}
+    RTEntry(int cost, uint16_t outgoing_port, uint16_t dest_port)
+    : cost(cost), outgoing_port(outgoing_port), dest_port(dest_port) {}
     
-    string dest_id;
     int cost;
     uint16_t outgoing_port;
     uint16_t dest_port;
 };
 
-
+typedef map<string,int> DV;
 
 struct DVMsg {
     DVMsg(string src_id, map<string,int>  dv)
@@ -52,7 +49,6 @@ struct DVMsg {
         message += " ";
         return message;
     }
-    
 
     static DVMsg fromString(string str)
     {
@@ -75,7 +71,7 @@ struct DVMsg {
     }
     
     string src_id;
-    map<string,int>  dv;
+    DV dv;
 
 };
 
@@ -84,23 +80,23 @@ class MyRouter
     const static int MAX_LENGTH = 1024;
 public:
     MyRouter(boost::asio::io_service& io_service, string id,
-             uint16_t local_port, vector<Interface> neighbors)
-    : sock(io_service, udp::endpoint(udp::v4(), local_port)),
-    io_service(io_service), id(id), neighbors(neighbors)
+             uint16_t local_port, map<string, Interface> neighbors)
+    : sock(io_service, udp::endpoint(udp::v4(), local_port)), io_service(io_service),
+    id(id), local_port(local_port), neighbors(neighbors)
     {
         start_receive();
         // TODO: periodically advertise its distance vector to each of its neighbors every 5 seconds.
         for(;;){
-            broadcast(dvmsg.toString());
+            broadcast(dvmsg().toString());
             sleep(5000);    
         }
-       
     }
     
     void broadcast(string message)
     {
-        for (auto& interface : neighbors)
+        for (auto& i : neighbors)
         {
+            Interface interface = i.second;
             udp::endpoint sendee_endpoint(udp::v4(), interface.port);
             cout << "Send to " << sendee_endpoint << endl;
             send(message, sendee_endpoint);
@@ -113,17 +109,6 @@ public:
                            boost::bind(&MyRouter::handle_send, this, message,
                                        boost::asio::placeholders::error,
                                        boost::asio::placeholders::bytes_transferred));
-    }
-    
-    // return true (changed) / false (unchanged)
-    bool dv_change(string dest_id, int cost)
-    {
-        if (dv.count(dest_id) > 0)
-        {
-            dv[dest_id] = cost;
-            return true;
-        }
-        return false;
     }
     
 private:
@@ -152,23 +137,36 @@ private:
             // TODO: recaculate routing tables
             bool has_change = false;
             DVMsg dvm = DVMsg::fromString(recv_str);
-            int distance = dvmsg.dv[dvm.src_id]; 
+            int distance = dv[dvm.src_id];
+            map<string, int> m = dvm.dv;
 
-            for(auto it=m.begin(); it!=m.end(); ++it){
-                if(it->second<INT_MAX){
-                    if((it->second)+distance < dvmsg.dv)[it->first]){
-                        (dvmsg.dv)[it->first] = (it->second) + distance;
+            for (auto it=m.begin(); it!=m.end(); ++it)
+            {
+                string dest_id = it->first;
+                int cost = it->second;
+                
+                if (dv.count(dest_id) > 0)
+                {
+                    if (cost + distance < dv[dest_id])
+                    {
+                        dv[dest_id] = cost + distance;
+                        RouteTable[dest_id].cost = dv[dest_id];
+                        RouteTable[dest_id].dest_port = neighbors[dvm.src_id].port;
                         has_change = true;
                     }
                 }
+                else
+                {
+                    dv[dest_id] = cost + distance;
+                    RouteTable[dest_id] = RTEntry(cost, local_port, neighbors[dvm.src_id].port);
+                    has_change = true;
+                }
             }
-
-
 
             // TODO: if any change, broadcast to neighbors (using broadcast())
 
             if(has_change){
-                broadcast(dvmsg.toString());
+                broadcast(dvmsg().toString());
             }
             
             // below code only for debug (no meaning)
@@ -194,12 +192,12 @@ private:
     udp::socket sock;
     boost::asio::io_service& io_service;
     string id;
-    vector<Interface> neighbors;
+    uint16_t local_port;
+    map<string, Interface> neighbors; // id => Interface
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RTEntry> RouteTable; // id => RTEntry
-    DVMsg dvmsg;
-
+    DV dv;
 };
 
 int main(int argc, char** argv)
@@ -212,7 +210,7 @@ int main(int argc, char** argv)
     
     string id = string(argv[1]);
     uint16_t local_port = 0;
-    vector<Interface> interfaces;
+    map<string, Interface> neighbors;
     
     ifstream initfile("init.txt");
     string line;
@@ -223,11 +221,11 @@ int main(int argc, char** argv)
         string src_router = tokens[0];
         string dest_router = tokens[1];
         uint16_t port = stoi(tokens[2]);
-        int link_cost = stoi(tokens[3]);
+        int cost = stoi(tokens[3]);
         
         if (id.compare(src_router) == 0)
         {
-            interfaces.push_back(Interface(dest_router, port, link_cost));
+            neighbors[dest_router] = Interface(port, cost);
         }
         
         if (local_port == 0 && id.compare(dest_router) == 0)
@@ -242,7 +240,7 @@ int main(int argc, char** argv)
     }
     
     boost::asio::io_service io_service;
-    MyRouter rt(io_service, id, local_port, interfaces);
+    MyRouter rt(io_service, id, local_port, neighbors);
     io_service.run();
     
     return 0;
