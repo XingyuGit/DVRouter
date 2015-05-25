@@ -31,13 +31,17 @@ struct RTEntry {
     uint16_t dest_port;
 };
 
-struct DVElem {
-    DVElem(string dest_id, int cost)
-    : dest_id(dest_id), cost(cost) {}
-    
-    string dest_id;
-    int cost;
-};
+typedef map<string,int> DVElem; // dest_id => cost
+
+//struct DVElem {
+//    DVElem(string dest_id, int cost)
+//    : dest_id(dest_id), cost(cost) {}
+//    
+//    string dest_id;
+//    int cost;
+//    
+//    map<string, int> DV
+//};
 
 struct DVMsg {
     DVMsg(string src_id, vector<DVElem> dv)
@@ -142,6 +146,7 @@ private:
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RTEntry> RouteTable; // id => RTEntry
+    
 };
 
 int main(int argc, char** argv)
