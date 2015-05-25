@@ -14,26 +14,37 @@ using namespace boost::asio::ip;
 struct Interface {
     Interface(string id, int port, int link_cost)
     : id(id), port(port), link_cost(link_cost) {}
+    
     string id;
     uint16_t port;
     int link_cost;
 };
 
 struct RTEntry {
+    RTEntry(string dest_id, int cost, uint16_t outgoing_port, uint16_t dest_port)
+    : dest_id(dest_id), cost(cost), outgoing_port(outgoing_port),
+    dest_port(dest_port) {}
+    
     string dest_id;
     int cost;
     uint16_t outgoing_port;
     uint16_t dest_port;
 };
 
-struct DV {
+struct DVElem {
+    DVElem(string dest_id, int cost)
+    : dest_id(dest_id), cost(cost) {}
+    
     string dest_id;
     int cost;
 };
 
 struct DVMsg {
+    DVMsg(string src_id, vector<DVElem> dv)
+    : src_id(src_id), dv(dv) {}
+    
     string src_id;
-    vector<DV> dvs;
+    vector<DVElem> dv;
 };
 
 class MyRouter
@@ -50,7 +61,8 @@ public:
        
     }
     
-    void broadcast(string message)
+    template<typename MsgType>
+    void broadcast(MsgType message)
     {
         for (auto& interface : neighbors)
         {
@@ -60,7 +72,8 @@ public:
         }
     }
     
-    void send(string message, udp::endpoint sendee_endpoint)
+    template<typename MsgType>
+    void send(MsgType message, udp::endpoint sendee_endpoint)
     {
         sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
                            boost::bind(&MyRouter::handle_send, this, message,
@@ -69,6 +82,10 @@ public:
     }
     
 private:
+    DVMsg get_dvmsg() {
+        // iterate the RouteTable and construct the DVMsg
+    }
+    
     void start_receive()
     {
         sock.async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
@@ -116,7 +133,7 @@ private:
     vector<Interface> neighbors;
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
-    map<string, RTEntry> RouteTable; // id => RTRecord
+    map<string, RTEntry> RouteTable; // id => RTEntry
 };
 
 int main(int argc, char** argv)
