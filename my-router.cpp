@@ -64,7 +64,7 @@ struct DVMsg {
             string d_id = str.substr(0,i);
             str = str.substr(i+1);
             i = str.find(";");
-            int c = stoi(str.substr(0,i),nullptr,10);
+            int c = stoi(str.substr(0,i));
             m[d_id] = c;
             str = str.substr(i+1);
         }
@@ -85,14 +85,25 @@ public:
     : sock(io_service, udp::endpoint(udp::v4(), local_port)), io_service(io_service),
     id(id), local_port(local_port), neighbors(neighbors), timer(io_service)
     {
-        start_receive();
+        // initialize its own distance vector and routing table (only know neighbors' info)
+        for (auto& i : neighbors)
+        {
+            string id = i.first;
+            Interface interface = i.second;
+            dv[id] = interface.cost;
+            RouteTable[id] = RTEntry(interface.cost, local_port, interface.port);
+        }
         
-        // TODO: periodically advertise its distance vector to each of its neighbors every 5 seconds.
+        // periodically advertise its distance vector to each of its neighbors every 5 seconds.
         
+        // set timer
         timer.expires_from_now(boost::posix_time::seconds(5));
         
         // Start an asynchronous wait.
         timer.async_wait(boost::bind(&MyRouter::timeout_handler, this));
+        
+        // receive from neighbors
+        start_receive();
     }
     
     void broadcast(string message)
@@ -144,7 +155,7 @@ private:
             cout << "async_receive_from message='" << recv_str << "'" << endl;
             cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
             
-            // TODO: recaculate routing tables
+            // recaculate routing tables
             bool has_change = false;
             DVMsg dvm = DVMsg::fromString(recv_str);
             int distance = dv[dvm.src_id];
@@ -173,7 +184,7 @@ private:
                 }
             }
             
-            // TODO: if any change, broadcast to neighbors (using broadcast())
+            // if any change, broadcast to neighbors (using broadcast())
             
             if(has_change){
                 broadcast(dvmsg().toString());
@@ -207,7 +218,7 @@ private:
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RTEntry> RouteTable; // id => RTEntry
-    DV dv;
+    DV dv; // distance vector
     boost::asio::deadline_timer timer;
 };
 
