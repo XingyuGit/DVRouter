@@ -48,7 +48,7 @@ struct DVMsg {
         // encode object to string
     }
     
-    static DVMsg fromString()
+    static DVMsg fromString(string dvmsg_str)
     {
         // decode string to object
     }
