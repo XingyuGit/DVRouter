@@ -19,13 +19,21 @@ struct Interface {
     int link_cost;
 };
 
-typedef vector<pair<string, int> > DV; // (dest_id, cost)
-
-struct RTRecord {
+struct RTEntry {
     string dest_id;
     int cost;
     uint16_t outgoing_port;
     uint16_t dest_port;
+};
+
+struct DV {
+    string dest_id;
+    int cost;
+};
+
+struct DVMsg {
+    string src_id;
+    vector<DV> dvs;
 };
 
 class MyRouter
@@ -107,7 +115,7 @@ private:
     vector<Interface> neighbors;
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
-    map<string, RTRecord> RoutingTable; // id => RTRecord
+    map<string, RTEntry> RouteTable; // id => RTRecord
 };
 
 int main(int argc, char** argv)
