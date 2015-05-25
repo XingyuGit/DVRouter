@@ -31,21 +31,10 @@ struct RTEntry {
     uint16_t dest_port;
 };
 
-typedef map<string,int> DVElem; // dest_id => cost
-
-//struct DVElem {
-//    DVElem(string dest_id, int cost)
-//    : dest_id(dest_id), cost(cost) {}
-//    
-//    string dest_id;
-//    int cost;
-//    
-//    map<string, int> DV
-//};
+typedef map<string,int> DV; // dest_id => cost
 
 struct DVMsg {
-    DVMsg(string src_id, vector<DVElem> dv)
-    : src_id(src_id), dv(dv) {}
+    DVMsg(string src_id, DV dv) : src_id(src_id), dv(dv) {}
     
     string toString()
     {
@@ -58,7 +47,7 @@ struct DVMsg {
     }
     
     string src_id;
-    vector<DVElem> dv;
+    DV dv;
 };
 
 class MyRouter
@@ -92,10 +81,21 @@ public:
                                        boost::asio::placeholders::bytes_transferred));
     }
     
-private:
-    DVMsg get_dvmsg()
+    // return true (changed) / false (unchanged)
+    bool dv_change(string dest_id, int cost)
     {
-        // iterate the RouteTable and construct the DVMsg
+        if (dv.count(dest_id) > 0)
+        {
+            dv[dest_id] = cost;
+            return true;
+        }
+        return false;
+    }
+    
+private:
+    DVMsg dvmsg()
+    {
+        return DVMsg(id, dv);
     }
     
     void start_receive()
@@ -146,7 +146,7 @@ private:
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RTEntry> RouteTable; // id => RTEntry
-    
+    DV dv; // dest_id => cost
 };
 
 int main(int argc, char** argv)
@@ -172,11 +172,13 @@ int main(int argc, char** argv)
         uint16_t port = stoi(tokens[2]);
         int link_cost = stoi(tokens[3]);
         
-        if (id.compare(src_router) == 0) {
+        if (id.compare(src_router) == 0)
+        {
             interfaces.push_back(Interface(dest_router, port, link_cost));
         }
         
-        if (local_port == 0 && id.compare(dest_router) == 0) {
+        if (local_port == 0 && id.compare(dest_router) == 0)
+        {
             local_port = port;
         }
     }
