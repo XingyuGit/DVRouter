@@ -12,6 +12,7 @@ using namespace std;
 using namespace boost::asio::ip;
 
 struct Interface {
+    Interface() {}
     Interface(uint16_t port, int cost)
     : port(port), cost(cost) {}
     
@@ -20,6 +21,7 @@ struct Interface {
 };
 
 struct RTEntry {
+    RTEntry() {}
     RTEntry(int cost, uint16_t outgoing_port, uint16_t dest_port)
     : cost(cost), outgoing_port(outgoing_port), dest_port(dest_port) {}
     
