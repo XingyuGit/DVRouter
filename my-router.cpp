@@ -31,8 +31,8 @@ struct RTEntry {
     uint16_t dest_port;
 };
 
-struct DV {
-    DV(string dest_id, int cost)
+struct DVElem {
+    DVElem(string dest_id, int cost)
     : dest_id(dest_id), cost(cost) {}
     
     string dest_id;
@@ -40,11 +40,11 @@ struct DV {
 };
 
 struct DVMsg {
-    DVMsg(string src_id, vector<DV> dvs)
+    DVMsg(string src_id, vector<DVElem> dvs)
     : src_id(src_id), dvs(dvs) {}
     
     string src_id;
-    vector<DV> dvs;
+    vector<DVElem> dvs;
 };
 
 class MyRouter
@@ -60,7 +60,8 @@ public:
         // TODO: periodically advertise its distance vector to each of its neighbors every 5 seconds.
     }
     
-    void broadcast(string message)
+    template<typename MsgType>
+    void broadcast(MsgType message)
     {
         for (auto& interface : neighbors)
         {
@@ -70,7 +71,8 @@ public:
         }
     }
     
-    void send(string message, udp::endpoint sendee_endpoint)
+    template<typename MsgType>
+    void send(MsgType message, udp::endpoint sendee_endpoint)
     {
         sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
                            boost::bind(&MyRouter::handle_send, this, message,
@@ -126,7 +128,7 @@ private:
     vector<Interface> neighbors;
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
-    map<string, RTEntry> RouteTable; // id => RTRecord
+    map<string, RTEntry> RouteTable; // id => RTEntry
 };
 
 int main(int argc, char** argv)
