@@ -1,8 +1,8 @@
 #include <boost/asio.hpp>
 #include <boost/array.hpp>
 #include <boost/bind.hpp>
-#include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -51,7 +51,7 @@ struct DVMsg {
         message += " ";
         return message;
     }
-
+    
     static DVMsg fromString(string str)
     {
         // decode string to object
@@ -59,7 +59,7 @@ struct DVMsg {
         string id = str.substr(0,i);
         str = str.substr(i+1);
         map<string, int> m;
-        while(str.find(";")!=string::npos){
+        while(str.find(";") != string::npos){
             i = str.find(",");
             string d_id = str.substr(0,i);
             str = str.substr(i+1);
@@ -68,13 +68,12 @@ struct DVMsg {
             m[d_id] = c;
             str = str.substr(i+1);
         }
-        return DVMsg(id,m);
-
+        return DVMsg(id, m);
     }
     
     string src_id;
     DV dv;
-
+    
 };
 
 class MyRouter
@@ -84,14 +83,16 @@ public:
     MyRouter(boost::asio::io_service& io_service, string id,
              uint16_t local_port, map<string, Interface> neighbors)
     : sock(io_service, udp::endpoint(udp::v4(), local_port)), io_service(io_service),
-    id(id), local_port(local_port), neighbors(neighbors)
+    id(id), local_port(local_port), neighbors(neighbors), timer(io_service)
     {
         start_receive();
+        
         // TODO: periodically advertise its distance vector to each of its neighbors every 5 seconds.
-        for(;;){
-            broadcast(dvmsg().toString());
-            sleep(5000);    
-        }
+        
+        timer.expires_from_now(boost::posix_time::seconds(5));
+        
+        // Start an asynchronous wait.
+        timer.async_wait(boost::bind(&MyRouter::timeout_handler, this));
     }
     
     void broadcast(string message)
@@ -119,6 +120,13 @@ private:
         return DVMsg(id, dv);
     }
     
+    void timeout_handler()
+    {
+        broadcast(dvmsg().toString());
+        timer.expires_from_now(boost::posix_time::seconds(5));
+        timer.async_wait(boost::bind(&MyRouter::timeout_handler, this));
+    }
+    
     void start_receive()
     {
         sock.async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
@@ -141,7 +149,7 @@ private:
             DVMsg dvm = DVMsg::fromString(recv_str);
             int distance = dv[dvm.src_id];
             map<string, int> m = dvm.dv;
-
+            
             for (auto it=m.begin(); it!=m.end(); ++it)
             {
                 string dest_id = it->first;
@@ -164,20 +172,20 @@ private:
                     has_change = true;
                 }
             }
-
+            
             // TODO: if any change, broadcast to neighbors (using broadcast())
-
+            
             if(has_change){
                 broadcast(dvmsg().toString());
             }
             
             // below code only for debug (no meaning)
             
-            string message = "hello";
-            sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
-                               boost::bind(&MyRouter::handle_send, this, message,
-                                           boost::asio::placeholders::error,
-                                           boost::asio::placeholders::bytes_transferred));
+            //            string message = "hello";
+            //            sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
+            //                               boost::bind(&MyRouter::handle_send, this, message,
+            //                                           boost::asio::placeholders::error,
+            //                                           boost::asio::placeholders::bytes_transferred));
             
             // continue listening
             start_receive();
@@ -200,6 +208,7 @@ private:
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RTEntry> RouteTable; // id => RTEntry
     DV dv;
+    boost::asio::deadline_timer timer;
 };
 
 int main(int argc, char** argv)
