@@ -40,11 +40,11 @@ struct DVElem {
 };
 
 struct DVMsg {
-    DVMsg(string src_id, vector<DVElem> dvs)
-    : src_id(src_id), dvs(dvs) {}
+    DVMsg(string src_id, vector<DVElem> dv)
+    : src_id(src_id), dv(dv) {}
     
     string src_id;
-    vector<DVElem> dvs;
+    vector<DVElem> dv;
 };
 
 class MyRouter
@@ -81,6 +81,10 @@ public:
     }
     
 private:
+    DVMsg get_dvmsg() {
+        // iterate the RouteTable and construct the DVMsg
+    }
+    
     void start_receive()
     {
         sock.async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
