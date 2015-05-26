@@ -76,11 +76,11 @@ struct DVMsg {
     
 };
 
-class MyRouter
+class DVRouter
 {
     const static int MAX_LENGTH = 1024;
 public:
-    MyRouter(boost::asio::io_service& io_service, string id,
+    DVRouter(boost::asio::io_service& io_service, string id,
              uint16_t local_port, map<string, Interface> neighbors)
     : sock(io_service, udp::endpoint(udp::v4(), local_port)), io_service(io_service),
     id(id), local_port(local_port), neighbors(neighbors), timer(io_service)
@@ -101,7 +101,7 @@ public:
         timer.expires_from_now(boost::posix_time::seconds(5));
         
         // Start an asynchronous wait.
-        timer.async_wait(boost::bind(&MyRouter::timeout_handler, this));
+        timer.async_wait(boost::bind(&DVRouter::timeout_handler, this));
         
         // receive from neighbors
         start_receive();
@@ -124,7 +124,7 @@ public:
 //        cout << "async_send_to endpoint=" << sendee_endpoint << endl;
 //        cout << "async_send_to message='" << message << "'" << endl;
         sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
-                           boost::bind(&MyRouter::handle_send, this,
+                           boost::bind(&DVRouter::handle_send, this,
                                        boost::asio::placeholders::error,
                                        boost::asio::placeholders::bytes_transferred));
     }
@@ -139,13 +139,13 @@ private:
     {
         broadcast(dvmsg().toString());
         timer.expires_from_now(boost::posix_time::seconds(5));
-        timer.async_wait(boost::bind(&MyRouter::timeout_handler, this));
+        timer.async_wait(boost::bind(&DVRouter::timeout_handler, this));
     }
     
     void start_receive()
     {
         sock.async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
-                                boost::bind(&MyRouter::handle_receive, this,
+                                boost::bind(&DVRouter::handle_receive, this,
                                             boost::asio::placeholders::error,
                                             boost::asio::placeholders::bytes_transferred));
     }
@@ -206,7 +206,7 @@ private:
             
             //            string message = "hello";
             //            sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
-            //                               boost::bind(&MyRouter::handle_send, this, message,
+            //                               boost::bind(&DVRouter::handle_send, this, message,
             //                                           boost::asio::placeholders::error,
             //                                           boost::asio::placeholders::bytes_transferred));
             
@@ -274,7 +274,7 @@ int main(int argc, char** argv)
     }
     
     boost::asio::io_service io_service;
-    MyRouter rt(io_service, id, local_port, neighbors);
+    DVRouter rt(io_service, id, local_port, neighbors);
     io_service.run();
     
     return 0;

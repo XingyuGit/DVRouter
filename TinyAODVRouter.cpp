@@ -6,6 +6,7 @@
 #include <fstream>
 #include <string>
 #include <stdint.h>
+#include <deque>
 
 using namespace std;
 using namespace boost::asio::ip;
@@ -22,7 +23,7 @@ struct Interface {
 /* ----- TinyAOVDRouter ---------- */
 
 struct RREQ {
-    RREQ(src_id, dest_id)
+    RREQ(string src_id, string dest_id, int hop_count)
     : src_id(src_id), dest_id(dest_id), hop_count(hop_count) {}
     
     string toString()
@@ -52,11 +53,11 @@ struct RREQ {
         }
         else
         {
-            return emptyRREQ();
+            return RREQ::emptyRREQ();
         }
     }
     
-    RREQ emptyRREQ()
+    static RREQ emptyRREQ()
     {
         return RREQ("", "", 0);
     }
@@ -65,7 +66,7 @@ struct RREQ {
     {
         return src_id.length() == 0 &&
                 dest_id.length() == 0 &&
-                hop_count == 0
+                hop_count == 0;
     }
     
     string src_id;
@@ -74,7 +75,7 @@ struct RREQ {
 };
 
 struct RREP {
-    RREP(src_id, dest_id)
+    RREP(string src_id, string dest_id, int hop_count)
     : src_id(src_id), dest_id(dest_id), hop_count(hop_count) {}
     
     string toString()
@@ -85,7 +86,7 @@ struct RREP {
     
     static RREP fromString(string rrep_str)
     {
-        size_t found = rreq_str.find(":");
+        size_t found = rrep_str.find(":");
         if (found != std::string::npos &&
             rrep_str.substr(0, found).compare("rrep") == 0)
         {
@@ -104,11 +105,11 @@ struct RREP {
         }
         else
         {
-            return emptyRREP();
+            return RREP::emptyRREP();
         }
     }
     
-    RREP emptyRREP()
+    static RREP emptyRREP()
     {
         return RREP("", "", 0);
     }
@@ -117,7 +118,7 @@ struct RREP {
     {
         return src_id.length() == 0 &&
         dest_id.length() == 0 &&
-        hop_count == 0
+        hop_count == 0;
     }
     
     string src_id;
@@ -132,6 +133,10 @@ struct RERR {
 // Reverse Route Entry
 // src_id => RREntry
 struct RREntry {
+    RREntry() {}
+    RREntry(uint16_t next_hop, int hop_count)
+    : next_hop(next_hop), hop_count(hop_count) {}
+    
     uint16_t next_hop; // port
     int hop_count;
 };
@@ -139,20 +144,24 @@ struct RREntry {
 // Forward Route Entry
 // dest_id => FREntry
 struct FREntry {
+    FREntry() {}
+    FREntry(uint16_t next_hop, int hop_count)
+    : next_hop(next_hop), hop_count(hop_count) {}
+    
     uint16_t next_hop; // port
     int hop_count;
 };
 
 /* --------------------*/
 
-class TinyAOVDRouter
+class TinyAODVRouter
 {
     const static int MAX_LENGTH = 1024;
 public:
-    MyRouter(boost::asio::io_service& io_service, string id,
+    TinyAODVRouter(boost::asio::io_service& io_service, string id,
              uint16_t local_port, map<string, Interface> neighbors)
     : sock(io_service, udp::endpoint(udp::v4(), local_port)), io_service(io_service),
-    id(id), local_port(local_port), neighbors(neighbors), timer(io_service)
+    id(id), local_port(local_port), neighbors(neighbors)
     {
         // initialize its own distance vector and routing table (only know neighbors' info)
         for (auto& i : neighbors)
@@ -169,14 +178,14 @@ public:
     // send data message from upper layer
     void send_data(string message, string dest_id)
     {
-        if (RTTable.count(dest_id) > 0) // found
+        if (FRTable.count(dest_id) > 0) // found
         {
-            send("data:" + message, udp::endpoint(udp::v4(), RTTable[id].next_hop));
+            send("data:" + message, udp::endpoint(udp::v4(), FRTable[id].next_hop));
         }
         else // not found -> route discovery
         {
             // store the data in a queue
-            data_queue[dest_id].push(message);
+            data_queue[dest_id].push_back(message);
             
             // route discovery phase
             route_discovery(dest_id);
@@ -209,7 +218,7 @@ private:
     void send(string message, udp::endpoint sendee_endpoint)
     {
         sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
-                           boost::bind(&MyRouter::handle_send, this,
+                           boost::bind(&TinyAODVRouter::handle_send, this,
                                        boost::asio::placeholders::error,
                                        boost::asio::placeholders::bytes_transferred));
     }
@@ -217,7 +226,7 @@ private:
     void start_receive()
     {
         sock.async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
-                                boost::bind(&MyRouter::handle_receive, this,
+                                boost::bind(&TinyAODVRouter::handle_receive, this,
                                             boost::asio::placeholders::error,
                                             boost::asio::placeholders::bytes_transferred));
     }
@@ -228,7 +237,7 @@ private:
         {
             string recv_str(recv_buffer.begin(), recv_buffer.begin() + bytes_recvd);
             
-            cout << id << " Received from " << dvm.src_id << ": " << recv_str << endl;
+            cout << id << " Received from " << remote_endpoint.port() << ": " << recv_str << endl;
             cout << endl;
             
             RREQ rreq = RREQ::fromString(recv_str);
@@ -250,10 +259,10 @@ private:
                 else
                 {
                     // add / update reverse route table
-                    if (RRTable.count(src_id) == 0 ||
-                        RRTable[src_id].hop_count > rreq.hop_count)
+                    if (RRTable.count(rreq.src_id) == 0 ||
+                        RRTable[rreq.src_id].hop_count > rreq.hop_count)
                     {
-                        RRTable[src_id] = RREntry(remote_endpoint.port() /* next_hop */,
+                        RRTable[rreq.src_id] = RREntry(remote_endpoint.port() /* next_hop */,
                                                   rreq.hop_count);
                     }
                     else // broadcast
@@ -262,7 +271,7 @@ private:
                     }
                 }
             }
-            else (!rrep.isEmpty()) // is RREP controll msg
+            else if (!rrep.isEmpty()) // is RREP controll msg
             {
                 // increment hop_count
                 rrep.hop_count++;
@@ -275,10 +284,10 @@ private:
                 else
                 {
                     // add / update forward route table
-                    if (FRTable.count(dest_id) == 0 ||
-                        FRTable[dest_id].hop_count > rrep.hop_count)
+                    if (FRTable.count(rrep.dest_id) == 0 ||
+                        FRTable[rrep.dest_id].hop_count > rrep.hop_count)
                     {
-                        FRTable[dest_id] = FREntry(remote_endpoint.port() /* next_hop */,
+                        FRTable[rrep.dest_id] = FREntry(remote_endpoint.port() /* next_hop */,
                                                   rreq.hop_count);
                     }
                     else // unicast back using RRTable
@@ -288,7 +297,7 @@ private:
                     }
                 }
             }
-//            else (!rerr.isEmpty()) // is RERR controll msg
+//            else if (!rerr.isEmpty()) // is RERR controll msg
 //            {
 //                // TODO
 //            }
@@ -305,7 +314,8 @@ private:
     void send_queued_data(string dest_id)
     {
         // send all data in data_queue with dest_id
-        for (auto& data : data_queue[dest_id])
+        deque<string> queue_of_data = data_queue[dest_id];
+        for (auto& data : queue_of_data)
         {
             send_data(data, dest_id);
         }
@@ -326,7 +336,7 @@ private:
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RREntry> RRTable; // src_id => RREntry
     map<string, FREntry> FRTable; // dest_id => FREntry
-    map<string, queue<string> > data_queue; // dest_id => queue of msgs
+    map<string, deque<string> > data_queue; // dest_id => queue of msgs
 };
 
 int main(int argc, char** argv)
@@ -369,7 +379,7 @@ int main(int argc, char** argv)
     }
     
     boost::asio::io_service io_service;
-    MyRouter rt(io_service, id, local_port, neighbors);
+    TinyAODVRouter rt(io_service, id, local_port, neighbors);
     io_service.run();
     
     return 0;
