@@ -6,11 +6,11 @@ LDFLAGS=-lboost_system
 %.o: %.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-all: my-router
+all: DVRouter
 
-my-router: my-router.o
+DVRouter: DVRouter.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
-	rm -f *.o my-router
+	rm -f *.o DVRouter
 	
