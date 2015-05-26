@@ -1,2 +1,7 @@
-my-router
-my-router.o
+*
+!*.h
+!*.cpp
+!*.txt
+!*.md
+!.gitignore
+!Makefile
