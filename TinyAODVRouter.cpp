@@ -319,6 +319,9 @@ private:
         {
             send_data(data, dest_id);
         }
+        
+        // deletes all data
+        queue_of_data.clear();
     }
     
     void handle_send(const boost::system::error_code& error,
@@ -334,8 +337,8 @@ private:
     map<string, Interface> neighbors; // id => Interface
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
-    map<string, RREntry> RRTable; // src_id => RREntry
-    map<string, FREntry> FRTable; // dest_id => FREntry
+    map<string, RREntry> RRTable; // (Reverse Route Table) src_id => RREntry
+    map<string, FREntry> FRTable; // (Forward Route Table) dest_id => FREntry
     map<string, deque<string> > data_queue; // dest_id => queue of msgs
 };
 
