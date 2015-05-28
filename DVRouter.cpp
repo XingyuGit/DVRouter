@@ -30,6 +30,7 @@ struct RTEntry {
     uint16_t dest_port;
 };
 
+
 typedef map<string,int> DV;
 
 struct DVMsg {
@@ -128,6 +129,16 @@ public:
                                        boost::asio::placeholders::error,
                                        boost::asio::placeholders::bytes_transferred));
     }
+
+    void send_data(string message, string dest_id, bool is_src){
+        if (RouteTable.count(dest_id) > 0 && is_src) // is source
+        {
+            send("data:" + dest_id + ":" + id + ":" + message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
+        }
+        else if(RouteTable.count(dest_id) > 0 && !is_src){
+            send(message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
+        }
+    }
     
 private:
     DVMsg dvmsg()
@@ -163,52 +174,73 @@ private:
             
             
             // recaculate routing tables
+            if(recv_str.substr(0,5).compare("data:") == 0){
+                string data = recv_str.substr(5);
+                int i1 = data.find(":");
+                string dest_id = data.substr(0,i1);
+                if(dest_id.compare(id) == 0){
+                    data = data.substr(i1+1);
+                    int i2 = data.find(":");
+                    string src_id = data.substr(0,i2);
+                    data = data.substr(i2+1);
+                    cout<<"message received from "<<src_id<<": "<<data<<endl;
+                }
+                else{
+                    send_data(recv_str, dest_id, false);
+                }
+            }
+
+            else{
+
             
-            DVMsg dvm = DVMsg::fromString(recv_str);
+                DVMsg dvm = DVMsg::fromString(recv_str);
             
-            cout << id << " Received from " << dvm.src_id << ": " << recv_str << endl;
-            cout << endl;
+                cout << id << " Received from " << dvm.src_id << ": " << recv_str << endl;
+                cout << endl;
             
-            int distance = dv[dvm.src_id];
-            map<string, int> m = dvm.dv;
-            bool has_change = false;
-            
-            for (auto it=m.begin(); it!=m.end(); ++it)
-            {
-                string dest_id = it->first;
-                int cost = it->second;
+                int distance = dv[dvm.src_id];
+                map<string, int> m = dvm.dv;
+                bool has_change = false;
                 
-                if (dv.count(dest_id) > 0)
+                for (auto it=m.begin(); it!=m.end(); ++it)
                 {
-                    if (cost + distance < dv[dest_id])
+                    string dest_id = it->first;
+                    int cost = it->second;
+                
+                    if (dv.count(dest_id) > 0)
+                    {
+                        if (cost + distance < dv[dest_id])
+                        {
+                            dv[dest_id] = cost + distance;
+                            RouteTable[dest_id].cost = dv[dest_id];
+                            RouteTable[dest_id].dest_port = neighbors[dvm.src_id].port;
+                            has_change = true;
+                        }
+                    }
+                    else
                     {
                         dv[dest_id] = cost + distance;
-                        RouteTable[dest_id].cost = dv[dest_id];
-                        RouteTable[dest_id].dest_port = neighbors[dvm.src_id].port;
+                        RouteTable[dest_id] = RTEntry(cost, local_port, neighbors[dvm.src_id].port);
                         has_change = true;
                     }
                 }
-                else
-                {
-                    dv[dest_id] = cost + distance;
-                    RouteTable[dest_id] = RTEntry(cost, local_port, neighbors[dvm.src_id].port);
-                    has_change = true;
+            
+                // if any change, broadcast to neighbors (using broadcast())
+            
+                if(has_change){
+                    broadcast(dvmsg().toString());
                 }
+            
+                // below code only for debug (no meaning)
+            
+                //            string message = "hello";
+                //            sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
+                //                               boost::bind(&DVRouter::handle_send, this, message,
+                //                                           boost::asio::placeholders::error,
+                //                                           boost::asio::placeholders::bytes_transferred));
+
+
             }
-            
-            // if any change, broadcast to neighbors (using broadcast())
-            
-            if(has_change){
-                broadcast(dvmsg().toString());
-            }
-            
-            // below code only for debug (no meaning)
-            
-            //            string message = "hello";
-            //            sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
-            //                               boost::bind(&DVRouter::handle_send, this, message,
-            //                                           boost::asio::placeholders::error,
-            //                                           boost::asio::placeholders::bytes_transferred));
             
             // continue listening
             start_receive();
@@ -232,6 +264,7 @@ private:
     map<string, RTEntry> RouteTable; // id => RTEntry
     DV dv; // distance vector
     boost::asio::deadline_timer timer;
+
 };
 
 int main(int argc, char** argv)
