@@ -84,7 +84,8 @@ public:
     DVRouter(boost::asio::io_service& io_service, string id,
              uint16_t local_port, map<string, Interface> neighbors)
     : sock(io_service, udp::endpoint(udp::v4(), local_port)), io_service(io_service),
-    id(id), local_port(local_port), neighbors(neighbors), timer(io_service)
+    id(id), local_port(local_port), neighbors(neighbors), timer(io_service),
+    stdinput(io_service, STDIN_FILENO)
     {
         // initialize its own distance vector and routing table (only know neighbors' info)
         for (auto& i : neighbors)
@@ -106,6 +107,9 @@ public:
         
         // receive from neighbors
         start_receive();
+        
+        // input from stdin
+        start_input();
     }
     
     void broadcast(string message)
@@ -113,7 +117,7 @@ public:
         for (auto& i : neighbors)
         {
             Interface interface = i.second;
-            cout << id << " Sent to " << i.first << ": " << message << endl;
+            cout << id << " broadcast DV to " << i.first << ": " << message << endl;
             udp::endpoint sendee_endpoint(udp::v4(), interface.port);
             send(message, sendee_endpoint);
         }
@@ -122,20 +126,22 @@ public:
     
     void send(string message, udp::endpoint sendee_endpoint)
     {
-//        cout << "async_send_to endpoint=" << sendee_endpoint << endl;
-//        cout << "async_send_to message='" << message << "'" << endl;
+        //        cout << "async_send_to endpoint=" << sendee_endpoint << endl;
+        //        cout << "async_send_to message='" << message << "'" << endl;
         sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
                            boost::bind(&DVRouter::handle_send, this,
                                        boost::asio::placeholders::error,
                                        boost::asio::placeholders::bytes_transferred));
     }
-
-    void send_data(string message, string dest_id, bool is_src){
+    
+    void send_data(string message, string dest_id, bool is_src)
+    {
         if (RouteTable.count(dest_id) > 0 && is_src) // is source
         {
             send("data:" + dest_id + ":" + id + ":" + message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
         }
-        else if(RouteTable.count(dest_id) > 0 && !is_src){
+        else if(RouteTable.count(dest_id) > 0 && !is_src)
+        {
             send(message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
         }
     }
@@ -153,6 +159,39 @@ private:
         timer.async_wait(boost::bind(&DVRouter::timeout_handler, this));
     }
     
+    void start_input()
+    {
+        boost::asio::async_read_until(stdinput, input_buffer, "\n",
+                                      boost::bind(&DVRouter::handle_input, this,
+                                                  boost::asio::placeholders::error,
+                                                  boost::asio::placeholders::bytes_transferred));
+    }
+    
+    void handle_input(const boost::system::error_code& error, std::size_t length)
+    {
+        if (!error || error == boost::asio::error::message_size)
+        {
+            boost::asio::streambuf::const_buffers_type bufs = input_buffer.data();
+            string str(boost::asio::buffers_begin(bufs),
+                             boost::asio::buffers_begin(bufs) + length);
+            input_buffer.consume(length);
+        
+            boost::algorithm::trim_if(str, boost::is_any_of("\ \r\n"));
+            
+            cout << str << endl;
+            
+            // TODO: send data
+            
+            // Continuing
+            start_input();
+        }
+        else if( error == boost::asio::error::not_found)
+        {
+            cout << "Did not receive ending character!" << endl;
+        }
+
+    }
+    
     void start_receive()
     {
         sock.async_receive_from(boost::asio::buffer(recv_buffer), remote_endpoint,
@@ -166,38 +205,38 @@ private:
         if (!error || error == boost::asio::error::message_size)
         {
             string recv_str(recv_buffer.begin(), recv_buffer.begin() + bytes_recvd);
-//            cout << "async_receive_from endpoint=" << remote_endpoint << endl;
-//            cout << "async_receive_from message='" << recv_str << "'" << endl;
-//            cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
-//            cout << endl;
-            
-            
+            //            cout << "async_receive_from endpoint=" << remote_endpoint << endl;
+            //            cout << "async_receive_from message='" << recv_str << "'" << endl;
+            //            cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
+            //            cout << endl;
             
             // recaculate routing tables
-            if(recv_str.substr(0,5).compare("data:") == 0){
+            
+            if (recv_str.substr(0,5).compare("data:") == 0)
+            {
                 string data = recv_str.substr(5);
                 int i1 = data.find(":");
                 string dest_id = data.substr(0,i1);
-                if(dest_id.compare(id) == 0){
+                if(dest_id.compare(id) == 0) // I'm destination
+                {
                     data = data.substr(i1+1);
                     int i2 = data.find(":");
                     string src_id = data.substr(0,i2);
                     data = data.substr(i2+1);
-                    cout<<"message received from "<<src_id<<": "<<data<<endl;
+                    cout << id << "received data message from " << src_id << ": " << data << endl;
                 }
-                else{
+                else
+                {
                     send_data(recv_str, dest_id, false);
                 }
             }
-
-            else{
-
-            
+            else
+            {
                 DVMsg dvm = DVMsg::fromString(recv_str);
-            
-                cout << id << " Received from " << dvm.src_id << ": " << recv_str << endl;
+                
+                cout << id << " received DV from " << dvm.src_id << ": " << recv_str << endl;
                 cout << endl;
-            
+                
                 int distance = dv[dvm.src_id];
                 map<string, int> m = dvm.dv;
                 bool has_change = false;
@@ -206,7 +245,7 @@ private:
                 {
                     string dest_id = it->first;
                     int cost = it->second;
-                
+                    
                     if (dv.count(dest_id) > 0)
                     {
                         if (cost + distance < dv[dest_id])
@@ -224,22 +263,22 @@ private:
                         has_change = true;
                     }
                 }
-            
+                
                 // if any change, broadcast to neighbors (using broadcast())
-            
-                if(has_change){
+                
+                if (has_change)
+                {
                     broadcast(dvmsg().toString());
                 }
-            
+                
                 // below code only for debug (no meaning)
-            
+                
                 //            string message = "hello";
                 //            sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
                 //                               boost::bind(&DVRouter::handle_send, this, message,
                 //                                           boost::asio::placeholders::error,
                 //                                           boost::asio::placeholders::bytes_transferred));
-
-
+                
             }
             
             // continue listening
@@ -250,8 +289,8 @@ private:
     void handle_send(const boost::system::error_code& error,
                      std::size_t bytes_transferred)
     {
-//        cout << "async_send_to return " << error << ": " << bytes_transferred << " transmitted" << endl;
-//        cout << endl;
+        //        cout << "async_send_to return " << error << ": " << bytes_transferred << " transmitted" << endl;
+        //        cout << endl;
     }
     
     udp::socket sock;
@@ -264,7 +303,8 @@ private:
     map<string, RTEntry> RouteTable; // id => RTEntry
     DV dv; // distance vector
     boost::asio::deadline_timer timer;
-
+    boost::asio::streambuf input_buffer;
+    boost::asio::posix::stream_descriptor stdinput;
 };
 
 int main(int argc, char** argv)
