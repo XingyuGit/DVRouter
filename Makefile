@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-I. -Wall
+CXXFLAGS=-I. -Wall -std=c++11
 DEPS= #header file 
 LDFLAGS=-lboost_system
 

@@ -117,11 +117,11 @@ public:
         for (auto& i : neighbors)
         {
             Interface interface = i.second;
-            cout << id << " broadcast DV to " << i.first << ": " << message << endl;
+            //cout << id << " broadcast DV to " << i.first << ": " << message << endl;
             udp::endpoint sendee_endpoint(udp::v4(), interface.port);
             send(message, sendee_endpoint);
         }
-        cout << endl;
+        //cout << endl;
     }
     
     void send(string message, udp::endpoint sendee_endpoint)
@@ -138,6 +138,7 @@ public:
     {
         if (RouteTable.count(dest_id) > 0 && is_src) // is source
         {
+            cout<<message<<": from "<<id<<" to "<<dest_id<<endl;
             send("data:" + dest_id + ":" + id + ":" + message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
         }
         else if(RouteTable.count(dest_id) > 0 && !is_src)
@@ -181,6 +182,9 @@ private:
             cout << str << endl;
             
             // TODO: send data
+            int ind = str.find(":");
+            string dest_id = str.substr(0,ind);
+            send_data(str.substr(ind+1), dest_id, true);
             
             // Continuing
             start_input();
@@ -217,16 +221,17 @@ private:
                 string data = recv_str.substr(5);
                 int i1 = data.find(":");
                 string dest_id = data.substr(0,i1);
+                data = data.substr(i1+1);
+                int i2 = data.find(":");
+                string src_id = data.substr(0,i2);
+                data = data.substr(i2+1);
                 if(dest_id.compare(id) == 0) // I'm destination
                 {
-                    data = data.substr(i1+1);
-                    int i2 = data.find(":");
-                    string src_id = data.substr(0,i2);
-                    data = data.substr(i2+1);
                     cout << id << "received data message from " << src_id << ": " << data << endl;
                 }
                 else
                 {
+                    cout<<data<<": from "<<src_id<<" to "<<dest_id<<endl;
                     send_data(recv_str, dest_id, false);
                 }
             }
@@ -234,8 +239,8 @@ private:
             {
                 DVMsg dvm = DVMsg::fromString(recv_str);
                 
-                cout << id << " received DV from " << dvm.src_id << ": " << recv_str << endl;
-                cout << endl;
+                //cout << id << " received DV from " << dvm.src_id << ": " << recv_str << endl;
+                //cout << endl;
                 
                 int distance = dv[dvm.src_id];
                 map<string, int> m = dvm.dv;
@@ -250,17 +255,51 @@ private:
                     {
                         if (cost + distance < dv[dest_id])
                         {
+                            cout<<"The routing table before change is:"<<endl;
+                            cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
+                            for(auto &it : RouteTable){
+                                cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
+                            }
+                            cout<<"The DV caused change is:"<<endl;
+                            cout<<"The source id of the DV is: "<<dvm.src_id<<endl;
+                            cout<<"The destination and cost pairs of the DV is:"<<endl;
+                            for(auto &it : m){
+                                cout<<"("<<it.first<<","<<it.second<<")"<<" ";
+                            }
+                            cout<<endl; 
                             dv[dest_id] = cost + distance;
                             RouteTable[dest_id].cost = dv[dest_id];
                             RouteTable[dest_id].dest_port = neighbors[dvm.src_id].port;
                             has_change = true;
+                            cout<<"The routing table after change is:"<<endl;
+                            cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
+                            for(auto &it : RouteTable){
+                                cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
+                            }
                         }
                     }
                     else
                     {
+                        cout<<"The routing table before change is:"<<endl;
+                        cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
+                        for(auto &it : RouteTable){
+                            cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
+                        }
+                        cout<<"The DV caused change is:"<<endl;
+                        cout<<"The source id of the DV is: "<<dvm.src_id<<endl;
+                        cout<<"The destination and cost pairs of the DV is:"<<endl;
+                        for(auto &it : m){
+                            cout<<"("<<it.first<<","<<it.second<<")"<<" ";
+                        }
+                        cout<<endl; 
                         dv[dest_id] = cost + distance;
                         RouteTable[dest_id] = RTEntry(cost, local_port, neighbors[dvm.src_id].port);
                         has_change = true;
+                        cout<<"The routing table after change is:"<<endl;
+                        cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
+                        for(auto &it : RouteTable){
+                            cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
+                        }
                     }
                 }
                 
