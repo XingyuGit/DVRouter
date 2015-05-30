@@ -138,11 +138,12 @@ public:
     {
         if (RouteTable.count(dest_id) > 0 && is_src) // is source
         {
-            cout<<message<<": from "<<id<<" to "<<dest_id<<endl;
+            cout << "send data msg from " << id << " to " << dest_id << endl;
             send("data:" + dest_id + ":" + id + ":" + message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
         }
         else if(RouteTable.count(dest_id) > 0 && !is_src)
         {
+            //
             send(message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
         }
     }
@@ -227,11 +228,12 @@ private:
                 data = data.substr(i2+1);
                 if(dest_id.compare(id) == 0) // I'm destination
                 {
-                    cout << id << "received data message from " << src_id << ": " << data << endl;
+                    cout << id << " received data message from " << src_id << ": " << data << endl;
                 }
                 else
                 {
-                    cout<<data<<": from "<<src_id<<" to "<<dest_id<<endl;
+//                    cout<<data<<": from "<<src_id<<" to "<<dest_id<<endl;
+                    cout << "relay data from " << src_id << " to " << dest_id << ": " << data << endl;
                     send_data(recv_str, dest_id, false);
                 }
             }
@@ -276,6 +278,7 @@ private:
                             for(auto &it : RouteTable){
                                 cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
                             }
+                            cout<<endl;
                         }
                     }
                     else
@@ -293,13 +296,14 @@ private:
                         }
                         cout<<endl; 
                         dv[dest_id] = cost + distance;
-                        RouteTable[dest_id] = RTEntry(cost, local_port, neighbors[dvm.src_id].port);
+                        RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id].port);
                         has_change = true;
                         cout<<"The routing table after change is:"<<endl;
                         cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
                         for(auto &it : RouteTable){
                             cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
                         }
+                        cout<<endl;
                     }
                 }
                 
@@ -319,10 +323,10 @@ private:
                 //                                           boost::asio::placeholders::bytes_transferred));
                 
             }
-            
-            // continue listening
-            start_receive();
         }
+        
+        // continue listening
+        start_receive();
     }
     
     void handle_send(const boost::system::error_code& error,
