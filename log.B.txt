@@ -1,0 +1,64 @@
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		3		10001(Node B)		10000(Node A)
+C		3		10001(Node B)		10002(Node C)
+E		2		10001(Node B)		10005(Node E)
+F		1		10001(Node B)		10004(Node F)
+
+Change is caused by C's DV: (destination: D, minimal cost: 2)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		3		10001(Node B)		10000(Node A)
+C		3		10001(Node B)		10002(Node C)
+D		5		10001(Node B)		10002(Node D)
+E		2		10001(Node B)		10005(Node E)
+F		1		10001(Node B)		10004(Node F)
+-------------------****************---------------------
+
+
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		3		10001(Node B)		10000(Node A)
+C		3		10001(Node B)		10002(Node C)
+D		5		10001(Node B)		10002(Node D)
+E		2		10001(Node B)		10005(Node E)
+F		1		10001(Node B)		10004(Node F)
+
+Change is caused by F's DV: (destination: C, minimal cost: 1)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		3		10001(Node B)		10000(Node A)
+C		2		10001(Node B)		10004(Node C)
+D		5		10001(Node B)		10002(Node D)
+E		2		10001(Node B)		10005(Node E)
+F		1		10001(Node B)		10004(Node F)
+-------------------****************---------------------
+
+
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		3		10001(Node B)		10000(Node A)
+C		2		10001(Node B)		10004(Node C)
+D		5		10001(Node B)		10002(Node D)
+E		2		10001(Node B)		10005(Node E)
+F		1		10001(Node B)		10004(Node F)
+
+Change is caused by F's DV: (destination: D, minimal cost: 3)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		3		10001(Node B)		10000(Node A)
+C		2		10001(Node B)		10004(Node C)
+D		4		10001(Node B)		10004(Node D)
+E		2		10001(Node B)		10005(Node E)
+F		1		10001(Node B)		10004(Node F)
+-------------------****************---------------------
+
+
+B relay data from A to F: hello
+

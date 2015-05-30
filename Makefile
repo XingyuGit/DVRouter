@@ -8,6 +8,9 @@ LDFLAGS=-lboost_system
 
 all: DVRouter TinyAODVRouter
 
+debug: CXXFLAGS += -g
+debug: DVRouter TinyAODVRouter
+
 DVRouter: DVRouter.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 

@@ -1,0 +1,117 @@
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+C		2		10003(Node D)		10002(Node C)
+F		3		10003(Node D)		10004(Node F)
+
+Change is caused by C's DV: (destination: A, minimal cost: 6)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+C		2		10003(Node D)		10002(Node C)
+F		3		10003(Node D)		10004(Node F)
+-------------------****************---------------------
+
+
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+C		2		10003(Node D)		10002(Node C)
+F		3		10003(Node D)		10004(Node F)
+
+Change is caused by C's DV: (destination: B, minimal cost: 3)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+B		5		10003(Node D)		10002(Node B)
+C		2		10003(Node D)		10002(Node C)
+F		3		10003(Node D)		10004(Node F)
+-------------------****************---------------------
+
+
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+B		5		10003(Node D)		10002(Node B)
+C		2		10003(Node D)		10002(Node C)
+F		3		10003(Node D)		10004(Node F)
+
+Change is caused by C's DV: (destination: E, minimal cost: 5)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+B		5		10003(Node D)		10002(Node B)
+C		2		10003(Node D)		10002(Node C)
+E		7		10003(Node D)		10002(Node E)
+F		3		10003(Node D)		10004(Node F)
+-------------------****************---------------------
+
+
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+B		5		10003(Node D)		10002(Node B)
+C		2		10003(Node D)		10002(Node C)
+E		7		10003(Node D)		10002(Node E)
+F		3		10003(Node D)		10004(Node F)
+
+Change is caused by F's DV: (destination: B, minimal cost: 1)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+B		4		10003(Node D)		10004(Node B)
+C		2		10003(Node D)		10002(Node C)
+E		7		10003(Node D)		10002(Node E)
+F		3		10003(Node D)		10004(Node F)
+-------------------****************---------------------
+
+
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+B		4		10003(Node D)		10004(Node B)
+C		2		10003(Node D)		10002(Node C)
+E		7		10003(Node D)		10002(Node E)
+F		3		10003(Node D)		10004(Node F)
+
+Change is caused by F's DV: (destination: E, minimal cost: 3)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+B		4		10003(Node D)		10004(Node B)
+C		2		10003(Node D)		10002(Node C)
+E		6		10003(Node D)		10004(Node E)
+F		3		10003(Node D)		10004(Node F)
+-------------------****************---------------------
+
+
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		8		10003(Node D)		10002(Node A)
+B		4		10003(Node D)		10004(Node B)
+C		2		10003(Node D)		10002(Node C)
+E		6		10003(Node D)		10004(Node E)
+F		3		10003(Node D)		10004(Node F)
+
+Change is caused by C's DV: (destination: A, minimal cost: 5)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		7		10003(Node D)		10002(Node A)
+B		4		10003(Node D)		10004(Node B)
+C		2		10003(Node D)		10002(Node C)
+E		6		10003(Node D)		10004(Node E)
+F		3		10003(Node D)		10004(Node F)
+-------------------****************---------------------
+
+

@@ -79,7 +79,7 @@ struct DVMsg {
 
 class DVRouter
 {
-    const static int MAX_LENGTH = 1024;
+    const static int MAX_LENGTH = 8192;
 public:
     DVRouter(boost::asio::io_service& io_service, string id,
              uint16_t local_port, map<string, Interface> neighbors)
@@ -87,6 +87,8 @@ public:
     id(id), local_port(local_port), neighbors(neighbors), timer(io_service),
     stdinput(io_service, STDIN_FILENO)
     {
+        mylog.open("log." + id + ".txt", ofstream::out);
+        
         // initialize its own distance vector and routing table (only know neighbors' info)
         for (auto& i : neighbors)
         {
@@ -112,16 +114,21 @@ public:
         start_input();
     }
     
+    ~DVRouter()
+    {
+        mylog.close();
+    }
+    
     void broadcast(string message)
     {
         for (auto& i : neighbors)
         {
             Interface interface = i.second;
-            //cout << id << " broadcast DV to " << i.first << ": " << message << endl;
+            //mylog << id << " broadcast DV to " << i.first << ": " << message << endl;
             udp::endpoint sendee_endpoint(udp::v4(), interface.port);
             send(message, sendee_endpoint);
         }
-        //cout << endl;
+        //mylog << endl;
     }
     
     void send(string message, udp::endpoint sendee_endpoint)
@@ -136,7 +143,7 @@ public:
     {
         if (RouteTable.count(dest_id) > 0 && is_src) // is source
         {
-            cout << "send data msg from " << id << " to " << dest_id << endl;
+            mylog << id << " send message from " << id << " to " << dest_id << endl << endl;
             send("data:" + dest_id + ":" + id + ":" + message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
         }
         else if(RouteTable.count(dest_id) > 0 && !is_src)
@@ -177,20 +184,20 @@ private:
             
             boost::algorithm::trim_if(str, boost::is_any_of("\r\n "));
             
-            cout << str << endl;
+            mylog << "Your command: " << str << endl << endl;
             
-            // TODO: send data
+            // send data
             int ind = str.find(":");
             string dest_id = str.substr(0,ind);
             send_data(str.substr(ind+1), dest_id, true);
-            
-            // Continuing
-            start_input();
         }
         else if( error == boost::asio::error::not_found)
         {
-            cout << "Did not receive ending character!" << endl;
+            cerr << "Did not receive ending character!" << endl;
         }
+        
+        // Continuing
+        start_input();
         
     }
     
@@ -204,10 +211,10 @@ private:
     
     void print_routetable()
     {
-        cout << "Destination\tCost\t\tOutgoing UDP port\tDestination UDP port" << endl;
+        mylog << "Destination\tCost\t\tOutgoing UDP port\tDestination UDP port" << endl;
         for (auto &it : RouteTable)
         {
-            cout << it.first << "\t\t" << it.second.cost << "\t\t" << it.second.outgoing_port
+            mylog << it.first << "\t\t" << it.second.cost << "\t\t" << it.second.outgoing_port
             << "(Node "+ id + ")" << "\t\t" << it.second.dest_port << "(Node " + it.first + ")" << endl;
         }
     }
@@ -229,11 +236,11 @@ private:
                 data = data.substr(i2+1);
                 if (dest_id.compare(id) == 0) // I'm destination
                 {
-                    cout << id << " received data message from " << src_id << ": " << data << endl;
+                    mylog << id << " received data message from " << src_id << ": " << data << endl << endl;
                 }
                 else
                 {
-                    cout << "relay data from " << src_id << " to " << dest_id << ": " << data << endl;
+                    mylog << id << " relay data from " << src_id << " to " << dest_id << ": " << data << endl << endl;
                     send_data(recv_str, dest_id, false);
                 }
             }
@@ -252,26 +259,26 @@ private:
                     
                     if ((dv.count(dest_id) > 0 && cost + distance < dv[dest_id]) || dv.count(dest_id) == 0)
                     {
-                        cout << "-------------------****************---------------------" << endl;
+                        mylog << "-------------------****************---------------------" << endl;
                         
-                        cout << "The routing table before change is:" << endl;
+                        mylog << "The routing table before change is:" << endl;
                         print_routetable();
-                        cout << endl;
+                        mylog << endl;
                         
-                        cout << "Change is caused by " << dvm.src_id << "'s DV: ";
-                        cout << "(destination: " << dest_id << ", minimal cost: " << cost << ")" << endl;
-                        cout << endl;
+                        mylog << "Change is caused by " << dvm.src_id << "'s DV: ";
+                        mylog << "(destination: " << dest_id << ", minimal cost: " << cost << ")" << endl;
+                        mylog << endl;
                         
                         // update the DV and RouteTable
                         dv[dest_id] = cost + distance;
                         RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id].port);
                         has_change = true;
                         
-                        cout << "The routing table after change is:" << endl;
+                        mylog << "The routing table after change is:" << endl;
                         print_routetable();
                         
-                        cout << "-------------------****************---------------------" << endl;
-                        cout << endl << endl;
+                        mylog << "-------------------****************---------------------" << endl;
+                        mylog << endl << endl;
                     }
                 }
                 
@@ -315,10 +322,15 @@ private:
     boost::asio::deadline_timer timer;
     boost::asio::streambuf input_buffer;
     boost::asio::posix::stream_descriptor stdinput;
+    ofstream mylog;
 };
 
 int main(int argc, char** argv)
 {
+//    cout << unitbuf;
+//    setvbuf(stdout, NULL, _IONBF, 0);
+//    setvbuf(stderr, NULL, _IONBF, 0);
+    
     if (argc != 2)
     {
         cout << "Wrong arguments. Correct: ./my-router <id>" << endl;
@@ -357,9 +369,18 @@ int main(int argc, char** argv)
         return 0;
     }
     
-    boost::asio::io_service io_service;
-    DVRouter rt(io_service, id, local_port, neighbors);
-    io_service.run();
+    try
+    {
+        boost::asio::io_service io_service;
+        DVRouter rt(io_service, id, local_port, neighbors);
+        io_service.run();
+    }
+    catch (exception& e)
+    {
+        std::cerr << e.what() << std::endl;
+    }
+    
+    cout << "\nProgram stoped\n" << endl;
     
     return 0;
 }

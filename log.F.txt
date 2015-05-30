@@ -1,0 +1,43 @@
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+B		1		10004(Node F)		10001(Node B)
+C		1		10004(Node F)		10002(Node C)
+D		3		10004(Node F)		10003(Node D)
+E		3		10004(Node F)		10005(Node E)
+
+Change is caused by C's DV: (destination: A, minimal cost: 6)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		7		10004(Node F)		10002(Node A)
+B		1		10004(Node F)		10001(Node B)
+C		1		10004(Node F)		10002(Node C)
+D		3		10004(Node F)		10003(Node D)
+E		3		10004(Node F)		10005(Node E)
+-------------------****************---------------------
+
+
+-------------------****************---------------------
+The routing table before change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		7		10004(Node F)		10002(Node A)
+B		1		10004(Node F)		10001(Node B)
+C		1		10004(Node F)		10002(Node C)
+D		3		10004(Node F)		10003(Node D)
+E		3		10004(Node F)		10005(Node E)
+
+Change is caused by B's DV: (destination: A, minimal cost: 3)
+
+The routing table after change is:
+Destination	Cost		Outgoing UDP port	Destination UDP port
+A		4		10004(Node F)		10001(Node A)
+B		1		10004(Node F)		10001(Node B)
+C		1		10004(Node F)		10002(Node C)
+D		3		10004(Node F)		10003(Node D)
+E		3		10004(Node F)		10005(Node E)
+-------------------****************---------------------
+
+
+F received data message from A: hello
+
