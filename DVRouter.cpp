@@ -126,8 +126,6 @@ public:
     
     void send(string message, udp::endpoint sendee_endpoint)
     {
-        //        cout << "async_send_to endpoint=" << sendee_endpoint << endl;
-        //        cout << "async_send_to message='" << message << "'" << endl;
         sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
                            boost::bind(&DVRouter::handle_send, this,
                                        boost::asio::placeholders::error,
@@ -143,7 +141,6 @@ public:
         }
         else if(RouteTable.count(dest_id) > 0 && !is_src)
         {
-            //
             send(message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
         }
     }
@@ -175,10 +172,10 @@ private:
         {
             boost::asio::streambuf::const_buffers_type bufs = input_buffer.data();
             string str(boost::asio::buffers_begin(bufs),
-                             boost::asio::buffers_begin(bufs) + length);
+                       boost::asio::buffers_begin(bufs) + length);
             input_buffer.consume(length);
-        
-            boost::algorithm::trim_if(str, boost::is_any_of("\ \r\n"));
+            
+            boost::algorithm::trim_if(str, boost::is_any_of("\r\n "));
             
             cout << str << endl;
             
@@ -194,7 +191,7 @@ private:
         {
             cout << "Did not receive ending character!" << endl;
         }
-
+        
     }
     
     void start_receive()
@@ -205,19 +202,23 @@ private:
                                             boost::asio::placeholders::bytes_transferred));
     }
     
+    void print_routetable()
+    {
+        cout << "Destination\tCost\t\tOutgoing UDP port\tDestination UDP port" << endl;
+        for (auto &it : RouteTable)
+        {
+            cout << it.first << "\t\t" << it.second.cost << "\t\t" << it.second.outgoing_port
+            << "(Node "+ id + ")" << "\t\t" << it.second.dest_port << "(Node " + it.first + ")" << endl;
+        }
+    }
+    
     void handle_receive(const boost::system::error_code& error, size_t bytes_recvd)
     {
         if (!error || error == boost::asio::error::message_size)
         {
             string recv_str(recv_buffer.begin(), recv_buffer.begin() + bytes_recvd);
-            //            cout << "async_receive_from endpoint=" << remote_endpoint << endl;
-            //            cout << "async_receive_from message='" << recv_str << "'" << endl;
-            //            cout << "async_receive_from return " << error << ": " << bytes_recvd << " received" << endl;
-            //            cout << endl;
             
-            // recaculate routing tables
-            
-            if (recv_str.substr(0,5).compare("data:") == 0)
+            if (recv_str.substr(0,5).compare("data:") == 0) // data message
             {
                 string data = recv_str.substr(5);
                 int i1 = data.find(":");
@@ -226,84 +227,51 @@ private:
                 int i2 = data.find(":");
                 string src_id = data.substr(0,i2);
                 data = data.substr(i2+1);
-                if(dest_id.compare(id) == 0) // I'm destination
+                if (dest_id.compare(id) == 0) // I'm destination
                 {
                     cout << id << " received data message from " << src_id << ": " << data << endl;
                 }
                 else
                 {
-//                    cout<<data<<": from "<<src_id<<" to "<<dest_id<<endl;
                     cout << "relay data from " << src_id << " to " << dest_id << ": " << data << endl;
                     send_data(recv_str, dest_id, false);
                 }
             }
-            else
+            else  // controll message
             {
                 DVMsg dvm = DVMsg::fromString(recv_str);
                 
-                //cout << id << " received DV from " << dvm.src_id << ": " << recv_str << endl;
-                //cout << endl;
-                
                 int distance = dv[dvm.src_id];
-                map<string, int> m = dvm.dv;
+                map<string, int> remote_dv = dvm.dv;
                 bool has_change = false;
                 
-                for (auto it=m.begin(); it!=m.end(); ++it)
+                for (auto& it : remote_dv)
                 {
-                    string dest_id = it->first;
-                    int cost = it->second;
+                    string dest_id = it.first;
+                    int cost = it.second;
                     
-                    if (dv.count(dest_id) > 0)
+                    if ((dv.count(dest_id) > 0 && cost + distance < dv[dest_id]) || dv.count(dest_id) == 0)
                     {
-                        if (cost + distance < dv[dest_id])
-                        {
-                            cout<<"The routing table before change is:"<<endl;
-                            cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
-                            for(auto &it : RouteTable){
-                                cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
-                            }
-                            cout<<"The DV caused change is:"<<endl;
-                            cout<<"The source id of the DV is: "<<dvm.src_id<<endl;
-                            cout<<"The destination and cost pairs of the DV is:"<<endl;
-                            for(auto &it : m){
-                                cout<<"("<<it.first<<","<<it.second<<")"<<" ";
-                            }
-                            cout<<endl; 
-                            dv[dest_id] = cost + distance;
-                            RouteTable[dest_id].cost = dv[dest_id];
-                            RouteTable[dest_id].dest_port = neighbors[dvm.src_id].port;
-                            has_change = true;
-                            cout<<"The routing table after change is:"<<endl;
-                            cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
-                            for(auto &it : RouteTable){
-                                cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
-                            }
-                            cout<<endl;
-                        }
-                    }
-                    else
-                    {
-                        cout<<"The routing table before change is:"<<endl;
-                        cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
-                        for(auto &it : RouteTable){
-                            cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
-                        }
-                        cout<<"The DV caused change is:"<<endl;
-                        cout<<"The source id of the DV is: "<<dvm.src_id<<endl;
-                        cout<<"The destination and cost pairs of the DV is:"<<endl;
-                        for(auto &it : m){
-                            cout<<"("<<it.first<<","<<it.second<<")"<<" ";
-                        }
-                        cout<<endl; 
+                        cout << "-------------------****************---------------------" << endl;
+                        
+                        cout << "The routing table before change is:" << endl;
+                        print_routetable();
+                        cout << endl;
+                        
+                        cout << "Change is caused by " << dvm.src_id << "'s DV: ";
+                        cout << "(destination: " << dest_id << ", minimal cost: " << cost << ")" << endl;
+                        cout << endl;
+                        
+                        // update the DV and RouteTable
                         dv[dest_id] = cost + distance;
                         RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id].port);
                         has_change = true;
-                        cout<<"The routing table after change is:"<<endl;
-                        cout<<"destination    Cost     Outgoing UDP port    Destination UDP port"<<endl;
-                        for(auto &it : RouteTable){
-                            cout<<it.first<<"\t"<<it.second.cost<<"\t"<<it.second.outgoing_port<<"(Node "+id+")"<<"\t"<<it.second.dest_port<<"(Node "+it.first+")"<<endl;
-                        }
-                        cout<<endl;
+                        
+                        cout << "The routing table after change is:" << endl;
+                        print_routetable();
+                        
+                        cout << "-------------------****************---------------------" << endl;
+                        cout << endl << endl;
                     }
                 }
                 
@@ -332,8 +300,7 @@ private:
     void handle_send(const boost::system::error_code& error,
                      std::size_t bytes_transferred)
     {
-        //        cout << "async_send_to return " << error << ": " << bytes_transferred << " transmitted" << endl;
-        //        cout << endl;
+
     }
     
     udp::socket sock;
@@ -384,7 +351,8 @@ int main(int argc, char** argv)
         }
     }
     
-    if (local_port == 0) {
+    if (local_port == 0)
+    {
         cerr << "No port number for router " << id << endl;
         return 0;
     }
