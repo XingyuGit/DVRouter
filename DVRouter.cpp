@@ -56,7 +56,7 @@ struct DVMsg {
     static DVMsg fromString(string str)
     {
         // decode string to object
-        int i = str.find(":");
+        size_t i = str.find(":");
         string id = str.substr(0,i);
         str = str.substr(i+1);
         map<string, int> m;
@@ -76,6 +76,31 @@ struct DVMsg {
     DV dv;
     
 };
+
+vector<string> my_split(string str, int num_parts, string delimit)
+{
+    vector<string> res;
+    size_t pos_pre = 0;
+    while (num_parts > 1)
+    {
+        size_t pos = str.find_first_of(delimit);
+        if (pos == string::npos) break;
+        
+        string sub = str.substr(pos_pre, pos - pos_pre);
+        boost::algorithm::trim(sub);
+        pos_pre = pos + 1;
+        if (sub.length() == 0) continue;
+        
+        res.push_back(sub);
+        num_parts--;
+    }
+    
+    string sub = str.substr(pos_pre);
+    if (sub.length() > 0)
+        res.push_back(sub);
+    
+    return res;
+}
 
 class DVRouter
 {
@@ -125,18 +150,26 @@ public:
         {
             Interface interface = i.second;
             //mylog << id << " broadcast DV to " << i.first << ": " << message << endl;
-            udp::endpoint sendee_endpoint(udp::v4(), interface.port);
-            send(message, sendee_endpoint);
+            send(message, udp::endpoint(udp::v4(), interface.port));
         }
         //mylog << endl;
     }
     
-    void send(string message, udp::endpoint sendee_endpoint)
+    void change_cost(string neighbor_id, int new_cost)
     {
-        sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
-                           boost::bind(&DVRouter::handle_send, this,
-                                       boost::asio::placeholders::error,
-                                       boost::asio::placeholders::bytes_transferred));
+        if (neighbors[neighbor_id].cost != new_cost)
+        {
+            neighbors[neighbor_id].cost = new_cost;
+            RouteTable[neighbor_id].cost = new_cost;
+            dv[neighbor_id] = new_cost;
+            
+            send("cost:" + neighbor_id + ":" + id + ":" + to_string(new_cost), udp::endpoint(udp::v4(), neighbors[neighbor_id].port));
+            broadcast(dvmsg());
+        }
+        else
+        {
+            mylog << "Cost is not changed." << endl << endl;
+        }
     }
     
     void send_data(string message, string dest_id, bool is_src)
@@ -153,14 +186,22 @@ public:
     }
     
 private:
-    DVMsg dvmsg()
+    string dvmsg()
     {
-        return DVMsg(id, dv);
+        return "dv:" + DVMsg(id, dv).toString();
+    }
+    
+    void send(string message, udp::endpoint sendee_endpoint)
+    {
+        sock.async_send_to(boost::asio::buffer(message), sendee_endpoint,
+                           boost::bind(&DVRouter::handle_send, this,
+                                       boost::asio::placeholders::error,
+                                       boost::asio::placeholders::bytes_transferred));
     }
     
     void timeout_handler()
     {
-        broadcast(dvmsg().toString());
+        broadcast(dvmsg());
         timer.expires_from_now(boost::posix_time::seconds(5));
         timer.async_wait(boost::bind(&DVRouter::timeout_handler, this));
     }
@@ -186,10 +227,23 @@ private:
             
             mylog << "Your command: " << str << endl << endl;
             
-            // send data
-            int ind = str.find(":");
-            string dest_id = str.substr(0,ind);
-            send_data(str.substr(ind+1), dest_id, true);
+            vector<string> tokens = my_split(str, 3, ":");
+            string tag = tokens[0];
+            string dest_id = tokens[1];
+            string message = tokens[2];
+            
+            if (tag.compare("cost") == 0) // change neighbor cost, e.g. "cost:B:100"
+            {
+                change_cost(dest_id, stoi(message));
+            }
+            else if (tag.compare("data") == 0) // send data, e.g. "data:B:hello"
+            {
+                send_data(message, dest_id, true);
+            }
+            else
+            {
+                mylog << "Invalid commond: " << str << endl << endl;
+            }
         }
         else if( error == boost::asio::error::not_found)
         {
@@ -224,16 +278,17 @@ private:
         if (!error || error == boost::asio::error::message_size)
         {
             string recv_str(recv_buffer.begin(), recv_buffer.begin() + bytes_recvd);
+            vector<string> tokens = my_split(recv_str, 2, ":");
             
-            if (recv_str.substr(0,5).compare("data:") == 0) // data message
+            string tag = tokens[0];
+            
+            if (tag.compare("data") == 0) // data message
             {
-                string data = recv_str.substr(5);
-                int i1 = data.find(":");
-                string dest_id = data.substr(0,i1);
-                data = data.substr(i1+1);
-                int i2 = data.find(":");
-                string src_id = data.substr(0,i2);
-                data = data.substr(i2+1);
+                tokens = my_split(tokens[1], 3, ":");
+                string dest_id = tokens[0];
+                string src_id = tokens[1];
+                string data = tokens[2];
+                
                 if (dest_id.compare(id) == 0) // I'm destination
                 {
                     mylog << id << " received data message from " << src_id << ": " << data << endl << endl;
@@ -244,11 +299,23 @@ private:
                     send_data(recv_str, dest_id, false);
                 }
             }
-            else  // controll message
+            else if (tag.compare("cost") == 0)
             {
-                DVMsg dvm = DVMsg::fromString(recv_str);
+                tokens = my_split(tokens[1], 3, ":");
+                string dest_id = tokens[0];
+                string src_id = tokens[1];
+                int cost = stoi(tokens[2]);
                 
-                int distance = dv[dvm.src_id];
+                if (dest_id.compare(id) == 0) // I am the destination
+                {
+                    change_cost(src_id, cost);
+                }
+            }
+            else if (tag.compare("dv") == 0)  // dv message
+            {
+                DVMsg dvm = DVMsg::fromString(tokens[1]);
+                
+                int neighbor_cost = dv[dvm.src_id];
                 map<string, int> remote_dv = dvm.dv;
                 bool has_change = false;
                 
@@ -257,27 +324,36 @@ private:
                     string dest_id = it.first;
                     int cost = it.second;
                     
-                    if ((dv.count(dest_id) > 0 && cost + distance < dv[dest_id]) || dv.count(dest_id) == 0)
+                    if ((dv.count(dest_id) > 0 && cost + neighbor_cost < dv[dest_id]) || dv.count(dest_id) == 0)
                     {
-                        mylog << "-------------------****************---------------------" << endl;
+                        mylog << "-------------------********************************---------------------" << endl;
                         
                         mylog << "The routing table before change is:" << endl;
                         print_routetable();
                         mylog << endl;
                         
                         mylog << "Change is caused by " << dvm.src_id << "'s DV: ";
-                        mylog << "(destination: " << dest_id << ", minimal cost: " << cost << ")" << endl;
-                        mylog << endl;
+                        mylog << "(to: " << dest_id << ", cost: " << cost << ")" << endl;
+                        
                         
                         // update the DV and RouteTable
-                        dv[dest_id] = cost + distance;
+                        
+                        string old_cost_str = "Inf";
+                        if (dv.count(dest_id) > 0)
+                            old_cost_str = to_string(dv[dest_id]);
+                        
+                        dv[dest_id] = cost + neighbor_cost;
                         RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id].port);
                         has_change = true;
+                        
+                        mylog << "Update " << id << " distance to " << dest_id << ": " << neighbor_cost << "(Cost " << id << dvm.src_id << ") + "
+                        << cost << "(" << dvm.src_id << " distance to " << dest_id << ") = " << dv[dest_id] << " < " << old_cost_str
+                        << "(Old " << id << " distance to " << dest_id + ")" << endl << endl;
                         
                         mylog << "The routing table after change is:" << endl;
                         print_routetable();
                         
-                        mylog << "-------------------****************---------------------" << endl;
+                        mylog << "-------------------********************************---------------------" << endl;
                         mylog << endl << endl;
                     }
                 }
@@ -286,17 +362,8 @@ private:
                 
                 if (has_change)
                 {
-                    broadcast(dvmsg().toString());
+                    broadcast(dvmsg());
                 }
-                
-                // below code only for debug (no meaning)
-                
-                //            string message = "hello";
-                //            sock.async_send_to(boost::asio::buffer(message), remote_endpoint,
-                //                               boost::bind(&DVRouter::handle_send, this, message,
-                //                                           boost::asio::placeholders::error,
-                //                                           boost::asio::placeholders::bytes_transferred));
-                
             }
         }
         
