@@ -9,16 +9,22 @@
 #include <stdint.h>
 #include <ctime>
 
+#define DV_SEND_SEC 5
+#define FAIL_SEC 10
+
 using namespace std;
 using namespace boost::asio::ip;
 
+boost::asio::io_service io_service;
+
 struct Interface {
-    Interface() {}
+//    Interface() {}
     Interface(uint16_t port, int cost)
-    : port(port), cost(cost) {}
+    : port(port), cost(cost), fail_timer(io_service) {}
     
     uint16_t port;
     int cost;
+    boost::asio::deadline_timer fail_timer;
 };
 
 struct RTEntry {
@@ -75,7 +81,6 @@ struct DVMsg {
     
     string src_id;
     DV dv;
-    
 };
 
 vector<string> my_split(string str, int num_parts, string delimit)
@@ -107,11 +112,9 @@ class DVRouter
 {
     const static int MAX_LENGTH = 8192;
 public:
-    DVRouter(boost::asio::io_service& io_service, string id,
-             uint16_t local_port, map<string, Interface> neighbors)
-    : sock(io_service, udp::endpoint(udp::v4(), local_port)), io_service(io_service),
-    id(id), local_port(local_port), neighbors(neighbors), timer(io_service),
-    stdinput(io_service, STDIN_FILENO)
+    DVRouter(string id, uint16_t local_port, map<string, shared_ptr<Interface> > neighbors)
+    : sock(io_service, udp::endpoint(udp::v4(), local_port)), id(id), local_port(local_port),
+    neighbors(neighbors), dv_timer(io_service), stdinput(io_service, STDIN_FILENO)
     {
         mylog.open("log." + id + ".txt", ofstream::out);
         
@@ -119,19 +122,19 @@ public:
         for (auto& i : neighbors)
         {
             string id = i.first;
-            Interface interface = i.second;
-            dv[id] = interface.cost;
-            RouteTable[id] = RTEntry(interface.cost, local_port, interface.port);
+            shared_ptr<Interface> interface = i.second;
+            dv[id] = interface->cost;
+            RouteTable[id] = RTEntry(interface->cost, local_port, interface->port);
         }
         dv[id] = 0; // dv to itself is zero
         
-        // periodically advertise its distance vector to each of its neighbors every 5 seconds.
+        // periodically advertise its distance vector to each of its neighbors every DV_SEND_SEC seconds.
         
-        // set timer
-        timer.expires_from_now(boost::posix_time::seconds(5));
+        // set DV_SEND_SECr
+        dv_timer.expires_from_now(boost::posix_time::seconds(DV_SEND_SEC));
         
         // Start an asynchronous wait.
-        timer.async_wait(boost::bind(&DVRouter::timeout_handler, this));
+        dv_timer.async_wait(boost::bind(&DVRouter::dv_timeout_handler, this));
         
         // receive from neighbors
         start_receive();
@@ -149,23 +152,27 @@ public:
     {
         for (auto& i : neighbors)
         {
-            Interface interface = i.second;
+            shared_ptr<Interface> interface = i.second;
             //mylog << id << " broadcast DV to " << i.first << ": " << message << endl;
-            send(message, udp::endpoint(udp::v4(), interface.port));
+            send(message, udp::endpoint(udp::v4(), interface->port));
         }
         //mylog << endl;
     }
     
-    void change_cost(string neighbor_id, int new_cost)
+    void change_cost(string neighbor_id, int new_cost, bool reciprocal)
     {
-        if (neighbors[neighbor_id].cost != new_cost)
+        if (neighbors[neighbor_id]->cost != new_cost)
         {
-            neighbors[neighbor_id].cost = new_cost;
+            neighbors[neighbor_id]->cost = new_cost;
             RouteTable[neighbor_id].cost = new_cost;
             dv[neighbor_id] = new_cost;
             
-            send("cost:" + neighbor_id + ":" + id + ":" + to_string(new_cost), udp::endpoint(udp::v4(), neighbors[neighbor_id].port));
             broadcast(dvmsg());
+            
+            if (reciprocal)
+            {
+                send("cost:" + neighbor_id + ":" + id + ":" + to_string(new_cost), udp::endpoint(udp::v4(), neighbors[neighbor_id]->port));
+            }
         }
         else
         {
@@ -202,11 +209,16 @@ private:
                                        boost::asio::placeholders::bytes_transferred));
     }
     
-    void timeout_handler()
+    void dv_timeout_handler()
     {
         broadcast(dvmsg());
-        timer.expires_from_now(boost::posix_time::seconds(5));
-        timer.async_wait(boost::bind(&DVRouter::timeout_handler, this));
+        dv_timer.expires_from_now(boost::posix_time::seconds(DV_SEND_SEC));
+        dv_timer.async_wait(boost::bind(&DVRouter::dv_timeout_handler, this));
+    }
+    
+    void fail_timeout_handler(string src_id)
+    {
+        change_cost(src_id, INT_MAX, false);
     }
     
     void start_input()
@@ -238,7 +250,7 @@ private:
             
             if (tag.compare("cost") == 0) // change neighbor cost, e.g. "cost:B:100"
             {
-                change_cost(dest_id, stoi(message));
+                change_cost(dest_id, stoi(message), true);
             }
             else if (tag.compare("data") == 0) // send data, e.g. "data:B:hello"
             {
@@ -324,8 +336,8 @@ private:
                 {
                     logtime();
                     mylog << id << " received cost change from " << src_id << ". Cost " << id << src_id
-                    << " from " << neighbors[src_id].cost << " to " << cost << endl << endl;
-                    change_cost(src_id, cost);
+                    << " from " << neighbors[src_id]->cost << " to " << cost << endl << endl;
+                    change_cost(src_id, cost, false);
                 }
             }
             else if (tag.compare("dv") == 0)  // dv message
@@ -334,6 +346,12 @@ private:
                 
                 int neighbor_cost = dv[dvm.src_id];
                 map<string, int> remote_dv = dvm.dv;
+                
+                // refresh neighbor's timer
+                neighbors[dvm.src_id]->fail_timer.cancel();
+                neighbors[dvm.src_id]->fail_timer.expires_from_now(boost::posix_time::seconds(FAIL_SEC));
+                neighbors[dvm.src_id]->fail_timer.async_wait(boost::bind(&DVRouter::fail_timeout_handler, this, dvm.src_id));
+                
                 bool has_change = false;
                 
                 for (auto& it : remote_dv)
@@ -361,7 +379,7 @@ private:
                             old_cost_str = to_string(dv[dest_id]);
                         
                         dv[dest_id] = cost + neighbor_cost;
-                        RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id].port);
+                        RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id]->port);
                         has_change = true;
                         
                         mylog << "Update " << id << " distance to " << dest_id << ": " << neighbor_cost << "(Cost " << id << dvm.src_id << ") + "
@@ -396,15 +414,14 @@ private:
     }
     
     udp::socket sock;
-    boost::asio::io_service& io_service;
     string id;
     uint16_t local_port;
-    map<string, Interface> neighbors; // id => Interface
+    map<string, shared_ptr<Interface> > neighbors; // id => Interface
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
     map<string, RTEntry> RouteTable; // id => RTEntry
     DV dv; // distance vector
-    boost::asio::deadline_timer timer;
+    boost::asio::deadline_timer dv_timer;
     boost::asio::streambuf input_buffer;
     boost::asio::posix::stream_descriptor stdinput;
     ofstream mylog;
@@ -424,7 +441,7 @@ int main(int argc, char** argv)
     
     string id = string(argv[1]);
     uint16_t local_port = 0;
-    map<string, Interface> neighbors;
+    map<string, shared_ptr<Interface> > neighbors;
     
     ifstream initfile("init.txt");
     string line;
@@ -439,7 +456,8 @@ int main(int argc, char** argv)
         
         if (id.compare(src_router) == 0)
         {
-            neighbors[dest_router] = Interface(port, cost);
+            shared_ptr<Interface> interface(new Interface(port, cost));
+            neighbors[dest_router] = interface;
         }
         
         if (local_port == 0 && id.compare(dest_router) == 0)
@@ -456,13 +474,12 @@ int main(int argc, char** argv)
     
     try
     {
-        boost::asio::io_service io_service;
-        DVRouter rt(io_service, id, local_port, neighbors);
+        DVRouter rt(id, local_port, neighbors);
         io_service.run();
     }
     catch (exception& e)
     {
-        std::cerr << e.what() << std::endl;
+        cerr << e.what() << endl;
     }
     
     cout << "\nProgram stoped\n" << endl;
