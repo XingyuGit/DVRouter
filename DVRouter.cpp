@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 #include <stdint.h>
+#include <ctime>
 
 using namespace std;
 using namespace boost::asio::ip;
@@ -83,7 +84,7 @@ vector<string> my_split(string str, int num_parts, string delimit)
     size_t pos_pre = 0;
     while (num_parts > 1)
     {
-        size_t pos = str.find_first_of(delimit);
+        size_t pos = str.find_first_of(delimit, pos_pre);
         if (pos == string::npos) break;
         
         string sub = str.substr(pos_pre, pos - pos_pre);
@@ -168,6 +169,7 @@ public:
         }
         else
         {
+            logtime();
             mylog << "Cost is not changed." << endl << endl;
         }
     }
@@ -176,6 +178,7 @@ public:
     {
         if (RouteTable.count(dest_id) > 0 && is_src) // is source
         {
+            logtime();
             mylog << id << " send message from " << id << " to " << dest_id << endl << endl;
             send("data:" + dest_id + ":" + id + ":" + message, udp::endpoint(udp::v4(), RouteTable[dest_id].dest_port));
         }
@@ -225,6 +228,7 @@ private:
             
             boost::algorithm::trim_if(str, boost::is_any_of("\r\n "));
             
+            logtime();
             mylog << "Your command: " << str << endl << endl;
             
             vector<string> tokens = my_split(str, 3, ":");
@@ -242,7 +246,8 @@ private:
             }
             else
             {
-                mylog << "Invalid commond: " << str << endl << endl;
+                logtime();
+                mylog << "Invalid command: " << str << endl << endl;
             }
         }
         else if( error == boost::asio::error::not_found)
@@ -273,6 +278,12 @@ private:
         }
     }
     
+    void logtime()
+    {
+        time_t t = time(nullptr);
+        mylog << "(" << put_time(localtime(&t), "%c %Z") << ")" << flush;
+    }
+    
     void handle_receive(const boost::system::error_code& error, size_t bytes_recvd)
     {
         if (!error || error == boost::asio::error::message_size)
@@ -291,11 +302,14 @@ private:
                 
                 if (dest_id.compare(id) == 0) // I'm destination
                 {
+                    logtime();
                     mylog << id << " received data message from " << src_id << ": " << data << endl << endl;
                 }
                 else
                 {
-                    mylog << id << " relay data from " << src_id << " to " << dest_id << ": " << data << endl << endl;
+                    logtime();
+                    mylog << id << " relay data (src: " << src_id << ", dest: " << dest_id << ") to port "
+                    << RouteTable[dest_id].dest_port << ": " << data << endl << endl;
                     send_data(recv_str, dest_id, false);
                 }
             }
@@ -308,6 +322,9 @@ private:
                 
                 if (dest_id.compare(id) == 0) // I am the destination
                 {
+                    logtime();
+                    mylog << id << " received cost change from " << src_id << ". Cost " << id << src_id
+                    << " from " << neighbors[src_id].cost << " to " << cost << endl << endl;
                     change_cost(src_id, cost);
                 }
             }
@@ -326,7 +343,9 @@ private:
                     
                     if ((dv.count(dest_id) > 0 && cost + neighbor_cost < dv[dest_id]) || dv.count(dest_id) == 0)
                     {
-                        mylog << "-------------------********************************---------------------" << endl;
+                        mylog << "******************* ";
+                        logtime();
+                        mylog << " *******************" << endl;
                         
                         mylog << "The routing table before change is:" << endl;
                         print_routetable();
@@ -334,7 +353,6 @@ private:
                         
                         mylog << "Change is caused by " << dvm.src_id << "'s DV: ";
                         mylog << "(to: " << dest_id << ", cost: " << cost << ")" << endl;
-                        
                         
                         // update the DV and RouteTable
                         
@@ -353,7 +371,7 @@ private:
                         mylog << "The routing table after change is:" << endl;
                         print_routetable();
                         
-                        mylog << "-------------------********************************---------------------" << endl;
+                        mylog << "*******************------------------------*******************" << endl;
                         mylog << endl << endl;
                     }
                 }
