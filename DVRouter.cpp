@@ -8,6 +8,7 @@
 #include <string>
 #include <stdint.h>
 #include <ctime>
+#include <iomanip>
 
 #define DV_SEND_SEC 5
 #define FAIL_SEC 10
@@ -292,8 +293,11 @@ private:
     
     void logtime()
     {
-        time_t t = time(nullptr);
-        mylog << "(" << put_time(localtime(&t), "%c %Z") << ")" << flush;
+        time_t rawtime;
+        struct tm * timeinfo;
+        time( &rawtime );
+        timeinfo = localtime( &rawtime );
+        mylog << "(" << asctime(timeinfo) << ")" << flush;
     }
     
     void handle_receive(const boost::system::error_code& error, size_t bytes_recvd)
