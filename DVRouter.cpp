@@ -219,6 +219,9 @@ private:
     
     void fail_timeout_handler(string src_id)
     {
+        logtime();
+        mylog << "Have not received DV from " << src_id << " for " << FAIL_SEC << " seconds. " << flush;
+        mylog << "Mark DV to " << src_id << " as Inf." << endl;
         change_cost(src_id, INT_MAX, false);
     }
     
@@ -379,7 +382,7 @@ private:
                         // update the DV and RouteTable
                         
                         string old_cost_str = "Inf";
-                        if (dv.count(dest_id) > 0)
+                        if (dv.count(dest_id) > 0 && dv[dest_id] != INT_MAX)
                             old_cost_str = to_string(dv[dest_id]);
                         
                         dv[dest_id] = cost + neighbor_cost;
