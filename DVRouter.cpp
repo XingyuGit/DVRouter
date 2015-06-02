@@ -13,6 +13,8 @@
 #define DV_SEND_SEC 5
 #define FAIL_SEC 10
 
+#define INF 100000
+
 using namespace std;
 using namespace boost::asio::ip;
 
@@ -167,6 +169,10 @@ public:
     {
         if (neighbors[neighbor_id]->cost != new_cost)
         {
+            logtime()
+            mylog << "Cost " << id << neighbor_id << " changed from "
+            << neighbors[neighbor_id]->cost << " to " << new_cost << endl << endl;
+            
             neighbors[neighbor_id]->cost = new_cost;
             RouteTable[neighbor_id].cost = new_cost;
             dv[neighbor_id] = new_cost;
@@ -225,15 +231,11 @@ private:
         if (error == boost::asio::error::operation_aborted) {
             return;
         }
-        else if (error) {
-            cout << "Timer error: " << error.message() << endl;
-            return;
-        }
         
         logtime();
         mylog << "Have not received DV from " << src_id << " for " << FAIL_SEC << " seconds. " << flush;
-        mylog << "Mark DV to " << src_id << " as Inf." << endl;
-        change_cost(src_id, INT_MAX, false);
+        mylog << "Mark DV to " << src_id << " as Inf." << endl << endl;
+        change_cost(src_id, INF, false);
     }
     
     void start_input()
@@ -301,7 +303,7 @@ private:
         for (auto &it : RouteTable)
         {
             string cost_str = "Inf";
-            if (it.second.cost < INT_MAX)
+            if (it.second.cost < INF)
                 cost_str = to_string(it.second.cost);
             mylog << it.first << "\t\t" << cost_str << "\t\t" << it.second.outgoing_port
             << "(Node "+ id + ")" << "\t\t" << it.second.dest_port << "(Node " + it.first + ")" << endl;
@@ -359,8 +361,7 @@ private:
                 if (dest_id.compare(id) == 0) // I am the destination
                 {
                     logtime();
-                    mylog << id << " received cost change from " << src_id << ". Cost " << id << src_id
-                    << " from " << neighbors[src_id]->cost << " to " << cost << endl << endl;
+                    mylog << id << " received cost change from " << src_id << endl << endl;
                     change_cost(src_id, cost, false);
                 }
             }
@@ -372,7 +373,7 @@ private:
                 map<string, int> remote_dv = dvm.dv;
                 
                 // refresh neighbor's timer
-                neighbors[dvm.src_id]->fail_timer.cancel();
+//                neighbors[dvm.src_id]->fail_timer.cancel();
                 neighbors[dvm.src_id]->fail_timer.expires_from_now(boost::posix_time::seconds(FAIL_SEC));
                 neighbors[dvm.src_id]->fail_timer.async_wait(boost::bind(&DVRouter::fail_timeout_handler, this, dvm.src_id,
                                                                          boost::asio::placeholders::error));
@@ -400,7 +401,7 @@ private:
                         // update the DV and RouteTable
                         
                         string old_cost_str = "Inf";
-                        if (dv.count(dest_id) > 0 && dv[dest_id] != INT_MAX)
+                        if (dv.count(dest_id) > 0 && dv[dest_id] < INF)
                             old_cost_str = to_string(dv[dest_id]);
                         
                         dv[dest_id] = cost + neighbor_cost;
