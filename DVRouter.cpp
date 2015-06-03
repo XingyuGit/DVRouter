@@ -13,6 +13,8 @@
 #define DV_SEND_SEC 5
 #define FAIL_SEC 10
 
+#define INF 100000
+
 using namespace std;
 using namespace boost::asio::ip;
 
@@ -20,22 +22,25 @@ boost::asio::io_service io_service;
 
 struct Interface {
 //    Interface() {}
-    Interface(uint16_t port, int cost)
-    : port(port), cost(cost), fail_timer(io_service) {}
+    Interface(uint16_t port, string neighbor_id, int cost)
+    : port(port), neighbor_id(neighbor_id), cost(cost),
+    fail_timer(io_service) {}
     
     uint16_t port;
+    string neighbor_id;
     int cost;
     boost::asio::deadline_timer fail_timer;
 };
 
 struct RTEntry {
     RTEntry() {}
-    RTEntry(int cost, uint16_t outgoing_port, uint16_t dest_port)
-    : cost(cost), outgoing_port(outgoing_port), dest_port(dest_port) {}
+    RTEntry(int cost, uint16_t outgoing_port, uint16_t dest_port, string next_hop)
+    : cost(cost), outgoing_port(outgoing_port), dest_port(dest_port), next_hop(next_hop) {}
     
     int cost;
     uint16_t outgoing_port;
     uint16_t dest_port;
+    string next_hop; // neighbor router id
 };
 
 
@@ -125,7 +130,7 @@ public:
             string id = i.first;
             shared_ptr<Interface> interface = i.second;
             dv[id] = interface->cost;
-            RouteTable[id] = RTEntry(interface->cost, local_port, interface->port);
+            RouteTable[id] = RTEntry(interface->cost, local_port, interface->port, interface->neighbor_id);
         }
         dv[id] = 0; // dv to itself is zero
         
@@ -164,6 +169,10 @@ public:
     {
         if (neighbors[neighbor_id]->cost != new_cost)
         {
+            logtime()
+            mylog << "Cost " << id << neighbor_id << " changed from "
+            << neighbors[neighbor_id]->cost << " to " << new_cost << endl << endl;
+            
             neighbors[neighbor_id]->cost = new_cost;
             RouteTable[neighbor_id].cost = new_cost;
             dv[neighbor_id] = new_cost;
@@ -217,9 +226,16 @@ private:
         dv_timer.async_wait(boost::bind(&DVRouter::dv_timeout_handler, this));
     }
     
-    void fail_timeout_handler(string src_id)
+    void fail_timeout_handler(string src_id, const boost::system::error_code& error)
     {
-        change_cost(src_id, INT_MAX, false);
+        if (error == boost::asio::error::operation_aborted) {
+            return;
+        }
+        
+        logtime();
+        mylog << "Have not received DV from " << src_id << " for " << FAIL_SEC << " seconds. " << flush;
+        mylog << "Mark DV to " << src_id << " as Inf." << endl << endl;
+        change_cost(src_id, INF, false);
     }
     
     void start_input()
@@ -286,7 +302,10 @@ private:
         mylog << "Destination\tCost\t\tOutgoing UDP port\tDestination UDP port" << endl;
         for (auto &it : RouteTable)
         {
-            mylog << it.first << "\t\t" << it.second.cost << "\t\t" << it.second.outgoing_port
+            string cost_str = "Inf";
+            if (it.second.cost < INF)
+                cost_str = to_string(it.second.cost);
+            mylog << it.first << "\t\t" << cost_str << "\t\t" << it.second.outgoing_port
             << "(Node "+ id + ")" << "\t\t" << it.second.dest_port << "(Node " + it.first + ")" << endl;
         }
     }
@@ -297,7 +316,9 @@ private:
         struct tm * timeinfo;
         time( &rawtime );
         timeinfo = localtime( &rawtime );
-        mylog << "(" << asctime(timeinfo) << ")" << flush;
+        char * time = asctime(timeinfo);
+        time[strlen(time)-1] = '\0';
+        mylog << " [" << time << "] " << flush;
     }
     
     void handle_receive(const boost::system::error_code& error, size_t bytes_recvd)
@@ -325,7 +346,8 @@ private:
                 {
                     logtime();
                     mylog << id << " relay data (src: " << src_id << ", dest: " << dest_id << ") to port "
-                    << RouteTable[dest_id].dest_port << ": " << data << endl << endl;
+                    << RouteTable[dest_id].dest_port << "(Node " << RouteTable[dest_id].next_hop << "): "
+                    << data << endl << endl;
                     send_data(recv_str, dest_id, false);
                 }
             }
@@ -339,8 +361,7 @@ private:
                 if (dest_id.compare(id) == 0) // I am the destination
                 {
                     logtime();
-                    mylog << id << " received cost change from " << src_id << ". Cost " << id << src_id
-                    << " from " << neighbors[src_id]->cost << " to " << cost << endl << endl;
+                    mylog << id << " received cost change from " << src_id << endl << endl;
                     change_cost(src_id, cost, false);
                 }
             }
@@ -352,9 +373,10 @@ private:
                 map<string, int> remote_dv = dvm.dv;
                 
                 // refresh neighbor's timer
-                neighbors[dvm.src_id]->fail_timer.cancel();
+//                neighbors[dvm.src_id]->fail_timer.cancel();
                 neighbors[dvm.src_id]->fail_timer.expires_from_now(boost::posix_time::seconds(FAIL_SEC));
-                neighbors[dvm.src_id]->fail_timer.async_wait(boost::bind(&DVRouter::fail_timeout_handler, this, dvm.src_id));
+                neighbors[dvm.src_id]->fail_timer.async_wait(boost::bind(&DVRouter::fail_timeout_handler, this, dvm.src_id,
+                                                                         boost::asio::placeholders::error));
                 
                 bool has_change = false;
                 
@@ -379,11 +401,11 @@ private:
                         // update the DV and RouteTable
                         
                         string old_cost_str = "Inf";
-                        if (dv.count(dest_id) > 0)
+                        if (dv.count(dest_id) > 0 && dv[dest_id] < INF)
                             old_cost_str = to_string(dv[dest_id]);
                         
                         dv[dest_id] = cost + neighbor_cost;
-                        RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id]->port);
+                        RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id]->port, dvm.src_id);
                         has_change = true;
                         
                         mylog << "Update " << id << " distance to " << dest_id << ": " << neighbor_cost << "(Cost " << id << dvm.src_id << ") + "
@@ -460,7 +482,7 @@ int main(int argc, char** argv)
         
         if (id.compare(src_router) == 0)
         {
-            shared_ptr<Interface> interface(new Interface(port, cost));
+            shared_ptr<Interface> interface(new Interface(port, dest_router, cost));
             neighbors[dest_router] = interface;
         }
         
