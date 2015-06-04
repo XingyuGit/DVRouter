@@ -405,7 +405,56 @@ private:
                     string dest_id = it.first;
                     int distance = it.second;
                     
-                    if ((dv.count(dest_id) > 0 && (distance + neighbor_cost < dv[dest_id] || (distance + neighbor_cost == dv[dest_id] && dvm.src_id.compare(RouteTable[dest_id].next_hop)<0))) || dv.count(dest_id) == 0)
+                    if ((dv.count(dest_id) > 0 && (distance + neighbor_cost < dv[dest_id] ||
+                            (distance + neighbor_cost == dv[dest_id] && dvm.src_id.compare(RouteTable[dest_id].next_hop) < 0))) || dv.count(dest_id) == 0)
+                    {
+                        mylog << "******************* ";
+                        logtime();
+                        mylog << " *******************" << endl;
+                        
+                        mylog << "The routing table before change is:" << endl;
+                        print_routetable();
+                        mylog << endl;
+                        
+                        mylog << "Change is caused by " << dvm.src_id << "'s DV: ";
+                        mylog << "DV{ source id: " << dvm.src_id << ", " << flush;
+                        mylog << "(destination, distance) pairs: " << flush;
+                        for (auto &it : dvm.dv)
+                        {
+                            mylog << "(" << it.first << "," << it.second << ")";
+                        }
+                        mylog << " }." << endl;
+                        mylog << "More Specifically, it is due to the distance of " << dvm.src_id << " to "
+                        << dest_id << " is " << distance << "." << endl;
+                        
+                        // update the DV and RouteTable
+                        
+                        string old_cost_str = "Inf";
+                        if (dv.count(dest_id) > 0 && dv[dest_id] < INF)
+                            old_cost_str = to_string(dv[dest_id]);
+                        
+                        dv[dest_id] = distance + neighbor_cost;
+                        RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id]->port, dvm.src_id);
+                        has_change = true;
+                        
+                        mylog << "Update " << id << " distance to " << dest_id << ": " << neighbor_cost << "(Cost " << id << dvm.src_id << ") + "
+                        << distance << "(" << dvm.src_id << " distance to " << dest_id << ") = " << dv[dest_id] << " < " << old_cost_str
+                        << "(Old " << id << " distance to " << dest_id + ")" << endl << endl;
+                        
+                        mylog << "The routing table after change is:" << endl;
+                        print_routetable();
+                        
+                        mylog << "*******************------------------------*******************" << endl;
+                        mylog << endl << endl;
+                    }
+                    
+                }
+                
+                for (auto& it : RouteTable)
+                {
+                    string dest_id = it.first;
+                    int distance = dvm.dv[dest_id];
+                    if (it.second.next_hop.compare(dvm.src_id) == 0 && distance + neighbor_cost > dv[dest_id])
                     {
                         mylog << "******************* ";
                         logtime();
