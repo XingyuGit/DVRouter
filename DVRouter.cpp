@@ -169,7 +169,7 @@ public:
     {
         if (neighbors[neighbor_id]->cost != new_cost)
         {
-            logtime()
+            logtime();
             mylog << "Cost " << id << neighbor_id << " changed from "
             << neighbors[neighbor_id]->cost << " to " << new_cost << endl << endl;
             
@@ -385,7 +385,7 @@ private:
                     string dest_id = it.first;
                     int cost = it.second;
                     
-                    if ((dv.count(dest_id) > 0 && cost + neighbor_cost < dv[dest_id]) || dv.count(dest_id) == 0)
+                    if ((dv.count(dest_id) > 0 && (cost + neighbor_cost < dv[dest_id] || (cost + neighbor_cost == dv[dest_id] && dvm.src_id.compare(RouteTable[dest_id].next_hop)<0))) || dv.count(dest_id) == 0)
                     {
                         mylog << "******************* ";
                         logtime();
