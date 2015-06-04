@@ -15,6 +15,8 @@
 
 #define INF 100000
 
+
+
 using namespace std;
 using namespace boost::asio::ip;
 
@@ -449,7 +451,7 @@ private:
                         if (dv.count(dest_id) > 0 && dv[dest_id] < INF)
                             old_cost_str = to_string(dv[dest_id]);
                         
-                        dv[dest_id] = distance + neighbor_cost;
+                        dv[dest_id] = min(distance + neighbor_cost, INF);
                         RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id]->port, dvm.src_id);
                         has_change = true;
                         
@@ -498,7 +500,7 @@ private:
                         if (dv.count(dest_id) > 0 && dv[dest_id] < INF)
                             old_cost_str = to_string(dv[dest_id]);
                         
-                        dv[dest_id] = distance + neighbor_cost;
+                        dv[dest_id] = min(distance + neighbor_cost, INF);
                         RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id]->port, dvm.src_id);
                         has_change = true;
                         
