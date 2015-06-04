@@ -369,7 +369,7 @@ private:
             {
                 DVMsg dvm = DVMsg::fromString(tokens[1]);
                 
-                int neighbor_cost = dv[dvm.src_id];
+                int neighbor_cost = neighbors[dvm.src_id].cost;
                 map<string, int> remote_dv = dvm.dv;
                 
                 // refresh neighbor's timer
