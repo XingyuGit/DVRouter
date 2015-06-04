@@ -16,38 +16,39 @@
 #define INF 100000
 
 
-
 using namespace std;
 using namespace boost::asio::ip;
 
 boost::asio::io_service io_service;
 
+// Interface to neighbor node
 struct Interface {
-    //    Interface() {}
     Interface(uint16_t port, string neighbor_id, int cost)
     : port(port), neighbor_id(neighbor_id), cost(cost),
     fail_timer(io_service) {}
     
-    uint16_t port;
-    string neighbor_id;
-    int cost;
-    boost::asio::deadline_timer fail_timer;
+    uint16_t port;  // neighbor's port number
+    string neighbor_id; // neighbor's id
+    int cost;   // link cost to neighbor
+    boost::asio::deadline_timer fail_timer; // timer for detecting neighbor's failure (not receiving DV for a certain time
 };
 
+// Routing Table's Entry
 struct RTEntry {
     RTEntry() {}
-    RTEntry(int cost, uint16_t outgoing_port, uint16_t dest_port, string next_hop)
-    : cost(cost), outgoing_port(outgoing_port), dest_port(dest_port), next_hop(next_hop) {}
+    RTEntry(int distance, uint16_t outgoing_port, uint16_t dest_port, string next_hop)
+    : distance(distance), outgoing_port(outgoing_port), dest_port(dest_port), next_hop(next_hop) {}
     
-    int cost;
-    uint16_t outgoing_port;
-    uint16_t dest_port;
+    int distance;   // distance to a node
+    uint16_t outgoing_port; // outgoing port number
+    uint16_t dest_port; // next hop port number
     string next_hop; // neighbor router id
 };
 
-
+// Distance vector
 typedef map<string,int> DV;
 
+// Distance vector message
 struct DVMsg {
     DVMsg(string src_id, map<string,int>  dv)
     : src_id(src_id), dv(dv) {}
@@ -87,8 +88,8 @@ struct DVMsg {
         return DVMsg(id, m);
     }
     
-    string src_id;
-    DV dv;
+    string src_id; // id of node that send the DV
+    DV dv;  // Distance vector
 };
 
 vector<string> my_split(string str, int num_parts, string delimit)
@@ -116,6 +117,7 @@ vector<string> my_split(string str, int num_parts, string delimit)
     return res;
 }
 
+// Main router class
 class DVRouter
 {
     const static int MAX_LENGTH = 8192;
@@ -162,8 +164,8 @@ public:
         {
             string neighbor_id = i.first;
             send_dv(neighbor_id);
-//            shared_ptr<Interface> interface = i.second;
-//            send(message, udp::endpoint(udp::v4(), interface->port));
+            //            shared_ptr<Interface> interface = i.second;
+            //            send(message, udp::endpoint(udp::v4(), interface->port));
         }
     }
     
@@ -193,10 +195,42 @@ public:
             << neighbors[neighbor_id]->cost << " to " << new_cost << endl << endl;
             
             if (!temp) neighbors[neighbor_id]->cost = new_cost;
-            RouteTable[neighbor_id].cost = new_cost;
+            RouteTable[neighbor_id].distance = new_cost;
             dv[neighbor_id] = new_cost;
+            int neighbor_cost = new_cost;
             
-//            broadcast(dvmsg());
+            for (auto& it : RouteTable)
+            {
+                string dest_id = it.first;
+                int distance = dv[dest_id];
+                if (it.second.next_hop.compare(neighbor_id) == 0 && min(distance + neighbor_cost, INF) > dv[dest_id])
+                {
+                    mylog << "******************* ";
+                    logtime();
+                    mylog << " *******************" << endl;
+                    
+                    mylog << "The routing table before change is:" << endl;
+                    print_routetable();
+                    mylog << endl;
+                    
+                    // update the DV and RouteTable
+                    
+                    string old_cost_str = "Inf";
+                    if (dv.count(dest_id) > 0 && dv[dest_id] < INF)
+                        old_cost_str = to_string(dv[dest_id]);
+                    
+                    dv[dest_id] = min(distance + neighbor_cost, INF);
+                    RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[neighbor_id]->port, neighbor_id);
+                    
+                    mylog << "The routing table after change is:" << endl;
+                    print_routetable();
+                    
+                    mylog << "*******************------------------------*******************" << endl;
+                    mylog << endl << endl;
+                }
+            }
+            
+            //            broadcast(dvmsg());
             broadcast_dv();
             
             if (reciprocal)
@@ -226,11 +260,11 @@ public:
     }
     
 private:
-//    string dvmsg()
-//    {
-//        
-//        return "dv:" + DVMsg(id, dv).toString();
-//    }
+    //    string dvmsg()
+    //    {
+    //
+    //        return "dv:" + DVMsg(id, dv).toString();
+    //    }
     
     void send(string message, udp::endpoint sendee_endpoint)
     {
@@ -242,7 +276,7 @@ private:
     
     void dv_timeout_handler()
     {
-//        broadcast(dvmsg());
+        //        broadcast(dvmsg());
         broadcast_dv();
         dv_timer.expires_from_now(boost::posix_time::seconds(DV_SEND_SEC));
         dv_timer.async_wait(boost::bind(&DVRouter::dv_timeout_handler, this));
@@ -323,7 +357,6 @@ private:
         
         // Continuing
         start_input();
-        
     }
     
     void start_receive()
@@ -336,12 +369,12 @@ private:
     
     void print_routetable()
     {
-        mylog << "Destination\tCost\t\tOutgoing UDP port\tDestination UDP port" << endl;
+        mylog << "Destination\tDistance\tOutgoing UDP port\tDestination UDP port" << endl;
         for (auto &it : RouteTable)
         {
             string cost_str = "Inf";
-            if (it.second.cost < INF)
-                cost_str = to_string(it.second.cost);
+            if (it.second.distance < INF)
+                cost_str = to_string(it.second.distance);
             mylog << it.first << "\t\t" << cost_str << "\t\t" << it.second.outgoing_port
             << "(Node "+ id + ")" << "\t\t" << it.second.dest_port << "(Node " + it.second.next_hop + ")" << endl;
         }
@@ -421,8 +454,8 @@ private:
                     string dest_id = it.first;
                     int distance = it.second;
                     
-                    if ((dv.count(dest_id) > 0 && (distance + neighbor_cost < dv[dest_id] ||
-                            (distance + neighbor_cost == dv[dest_id] && dvm.src_id.compare(RouteTable[dest_id].next_hop) < 0))) || dv.count(dest_id) == 0)
+                    if ((dv.count(dest_id) > 0 && (min(distance + neighbor_cost, INF) < dv[dest_id] ||
+                                                   (min(distance + neighbor_cost, INF) == dv[dest_id] && dvm.src_id.compare(RouteTable[dest_id].next_hop) < 0))) || dv.count(dest_id) == 0)
                     {
                         mylog << "******************* ";
                         logtime();
@@ -471,7 +504,7 @@ private:
                 {
                     string dest_id = it.first;
                     int distance = dvm.dv[dest_id];
-                    if (it.second.next_hop.compare(dvm.src_id) == 0 && distance + neighbor_cost > dv[dest_id])
+                    if (it.second.next_hop.compare(dvm.src_id) == 0 && min(distance + neighbor_cost, INF) > dv[dest_id])
                     {
                         mylog << "******************* ";
                         logtime();
@@ -520,7 +553,7 @@ private:
                 
                 if (has_change)
                 {
-//                    broadcast(dvmsg());
+                    //                    broadcast(dvmsg());
                     broadcast_dv();
                 }
             }
@@ -536,18 +569,18 @@ private:
         
     }
     
-    udp::socket sock;
-    string id;
-    uint16_t local_port;
-    map<string, shared_ptr<Interface> > neighbors; // id => Interface
+    udp::socket sock; // udp socket
+    string id;  // router id
+    uint16_t local_port; // router listening port
+    map<string, shared_ptr<Interface> > neighbors; // Interfaces to neighbors
     udp::endpoint remote_endpoint;
     boost::array<char,MAX_LENGTH> recv_buffer;
-    map<string, RTEntry> RouteTable; // id => RTEntry
+    map<string, RTEntry> RouteTable; // Routing table
     DV dv; // distance vector
-    boost::asio::deadline_timer dv_timer;
+    boost::asio::deadline_timer dv_timer; // for periodically sending DV to neighbors
     boost::asio::streambuf input_buffer;
     boost::asio::posix::stream_descriptor stdinput;
-    ofstream mylog;
+    ofstream mylog; // logging file
 };
 
 int main(int argc, char** argv)
