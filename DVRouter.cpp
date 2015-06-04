@@ -21,7 +21,7 @@ using namespace boost::asio::ip;
 boost::asio::io_service io_service;
 
 struct Interface {
-//    Interface() {}
+    //    Interface() {}
     Interface(uint16_t port, string neighbor_id, int cost)
     : port(port), neighbor_id(neighbor_id), cost(cost),
     fail_timer(io_service) {}
@@ -154,15 +154,32 @@ public:
         mylog.close();
     }
     
-    void broadcast(string message)
+    void broadcast_dv()
     {
         for (auto& i : neighbors)
         {
-            shared_ptr<Interface> interface = i.second;
-            //mylog << id << " broadcast DV to " << i.first << ": " << message << endl;
+            string neighbor_id = i.first;
+            send_dv(neighbor_id);
+//            shared_ptr<Interface> interface = i.second;
+//            send(message, udp::endpoint(udp::v4(), interface->port));
+        }
+    }
+    
+    void send_dv(string neighbor_id)
+    {
+        DV new_dv(dv);
+        
+        for (auto& it : RouteTable)
+        {
+            string dest_id = it.first;
+            shared_ptr<Interface> interface = neighbors[neighbor_id];
+            if (neighbor_id.compare(it.second.next_hop) == 0)
+            {
+                new_dv[dest_id] = INF;
+            }
+            string message = "dv:" + DVMsg(id, new_dv).toString();
             send(message, udp::endpoint(udp::v4(), interface->port));
         }
-        //mylog << endl;
     }
     
     void change_cost(string neighbor_id, int new_cost, bool reciprocal)
@@ -177,7 +194,8 @@ public:
             RouteTable[neighbor_id].cost = new_cost;
             dv[neighbor_id] = new_cost;
             
-            broadcast(dvmsg());
+//            broadcast(dvmsg());
+            broadcast_dv();
             
             if (reciprocal)
             {
@@ -206,10 +224,11 @@ public:
     }
     
 private:
-    string dvmsg()
-    {
-        return "dv:" + DVMsg(id, dv).toString();
-    }
+//    string dvmsg()
+//    {
+//        
+//        return "dv:" + DVMsg(id, dv).toString();
+//    }
     
     void send(string message, udp::endpoint sendee_endpoint)
     {
@@ -221,7 +240,8 @@ private:
     
     void dv_timeout_handler()
     {
-        broadcast(dvmsg());
+//        broadcast(dvmsg());
+        broadcast_dv();
         dv_timer.expires_from_now(boost::posix_time::seconds(DV_SEND_SEC));
         dv_timer.async_wait(boost::bind(&DVRouter::dv_timeout_handler, this));
     }
@@ -306,7 +326,7 @@ private:
             if (it.second.cost < INF)
                 cost_str = to_string(it.second.cost);
             mylog << it.first << "\t\t" << cost_str << "\t\t" << it.second.outgoing_port
-            << "(Node "+ id + ")" << "\t\t" << it.second.dest_port << "(Node " + it.first + ")" << endl;
+            << "(Node "+ id + ")" << "\t\t" << it.second.dest_port << "(Node " + it.second.next_hop + ")" << endl;
         }
     }
     
@@ -373,7 +393,7 @@ private:
                 map<string, int> remote_dv = dvm.dv;
                 
                 // refresh neighbor's timer
-//                neighbors[dvm.src_id]->fail_timer.cancel();
+                //                neighbors[dvm.src_id]->fail_timer.cancel();
                 neighbors[dvm.src_id]->fail_timer.expires_from_now(boost::posix_time::seconds(FAIL_SEC));
                 neighbors[dvm.src_id]->fail_timer.async_wait(boost::bind(&DVRouter::fail_timeout_handler, this, dvm.src_id,
                                                                          boost::asio::placeholders::error));
@@ -383,9 +403,9 @@ private:
                 for (auto& it : remote_dv)
                 {
                     string dest_id = it.first;
-                    int cost = it.second;
+                    int distance = it.second;
                     
-                    if ((dv.count(dest_id) > 0 && (cost + neighbor_cost < dv[dest_id] || (cost + neighbor_cost == dv[dest_id] && dvm.src_id.compare(RouteTable[dest_id].next_hop)<0))) || dv.count(dest_id) == 0)
+                    if ((dv.count(dest_id) > 0 && (distance + neighbor_cost < dv[dest_id] || (distance + neighbor_cost == dv[dest_id] && dvm.src_id.compare(RouteTable[dest_id].next_hop)<0))) || dv.count(dest_id) == 0)
                     {
                         mylog << "******************* ";
                         logtime();
@@ -396,7 +416,15 @@ private:
                         mylog << endl;
                         
                         mylog << "Change is caused by " << dvm.src_id << "'s DV: ";
-                        mylog << "(to: " << dest_id << ", cost: " << cost << ")" << endl;
+                        mylog << "DV{ source id: " << dvm.src_id << ", " << flush;
+                        mylog << "(destination, distance) pairs: " << flush;
+                        for (auto &it : dvm.dv)
+                        {
+                            mylog << "(" << it.first << "," << it.second << ")";
+                        }
+                        mylog << " }." << endl;
+                        mylog << "More Specifically, it is due to the distance of " << dvm.src_id << " to "
+                        << dest_id << " is " << distance << "." << endl;
                         
                         // update the DV and RouteTable
                         
@@ -404,12 +432,12 @@ private:
                         if (dv.count(dest_id) > 0 && dv[dest_id] < INF)
                             old_cost_str = to_string(dv[dest_id]);
                         
-                        dv[dest_id] = cost + neighbor_cost;
+                        dv[dest_id] = distance + neighbor_cost;
                         RouteTable[dest_id] = RTEntry(dv[dest_id], local_port, neighbors[dvm.src_id]->port, dvm.src_id);
                         has_change = true;
                         
                         mylog << "Update " << id << " distance to " << dest_id << ": " << neighbor_cost << "(Cost " << id << dvm.src_id << ") + "
-                        << cost << "(" << dvm.src_id << " distance to " << dest_id << ") = " << dv[dest_id] << " < " << old_cost_str
+                        << distance << "(" << dvm.src_id << " distance to " << dest_id << ") = " << dv[dest_id] << " < " << old_cost_str
                         << "(Old " << id << " distance to " << dest_id + ")" << endl << endl;
                         
                         mylog << "The routing table after change is:" << endl;
@@ -424,7 +452,8 @@ private:
                 
                 if (has_change)
                 {
-                    broadcast(dvmsg());
+//                    broadcast(dvmsg());
+                    broadcast_dv();
                 }
             }
         }
@@ -436,7 +465,7 @@ private:
     void handle_send(const boost::system::error_code& error,
                      std::size_t bytes_transferred)
     {
-
+        
     }
     
     udp::socket sock;
@@ -455,9 +484,9 @@ private:
 
 int main(int argc, char** argv)
 {
-//    cout << unitbuf;
-//    setvbuf(stdout, NULL, _IONBF, 0);
-//    setvbuf(stderr, NULL, _IONBF, 0);
+    //    cout << unitbuf;
+    //    setvbuf(stdout, NULL, _IONBF, 0);
+    //    setvbuf(stderr, NULL, _IONBF, 0);
     
     if (argc != 2)
     {
