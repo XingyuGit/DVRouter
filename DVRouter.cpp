@@ -182,7 +182,7 @@ public:
         }
     }
     
-    void change_cost(string neighbor_id, int new_cost, bool reciprocal)
+    void change_cost(string neighbor_id, int new_cost, bool reciprocal, bool temp)
     {
         if (neighbors[neighbor_id]->cost != new_cost)
         {
@@ -190,7 +190,7 @@ public:
             mylog << "Cost " << id << neighbor_id << " changed from "
             << neighbors[neighbor_id]->cost << " to " << new_cost << endl << endl;
             
-            neighbors[neighbor_id]->cost = new_cost;
+            if (!temp) neighbors[neighbor_id]->cost = new_cost;
             RouteTable[neighbor_id].cost = new_cost;
             dv[neighbor_id] = new_cost;
             
@@ -255,7 +255,22 @@ private:
         logtime();
         mylog << "Have not received DV from " << src_id << " for " << FAIL_SEC << " seconds. " << flush;
         mylog << "Mark DV to " << src_id << " as Inf." << endl << endl;
-        change_cost(src_id, INF, false);
+        
+        mylog << "******************* ";
+        logtime();
+        mylog << " *******************" << endl;
+        
+        mylog << "The routing table before change is:" << endl;
+        print_routetable();
+        mylog << endl;
+        
+        change_cost(src_id, INF, false, true);
+        
+        mylog << "The routing table after change is:" << endl;
+        print_routetable();
+        
+        mylog << "*******************------------------------*******************" << endl;
+        mylog << endl << endl;
     }
     
     void start_input()
@@ -287,7 +302,7 @@ private:
             
             if (tag.compare("cost") == 0) // change neighbor cost, e.g. "cost:B:100"
             {
-                change_cost(dest_id, stoi(message), true);
+                change_cost(dest_id, stoi(message), true, false);
             }
             else if (tag.compare("data") == 0) // send data, e.g. "data:B:hello"
             {
@@ -382,7 +397,7 @@ private:
                 {
                     logtime();
                     mylog << id << " received cost change from " << src_id << endl << endl;
-                    change_cost(src_id, cost, false);
+                    change_cost(src_id, cost, false, false);
                 }
             }
             else if (tag.compare("dv") == 0)  // dv message
@@ -390,7 +405,6 @@ private:
                 DVMsg dvm = DVMsg::fromString(tokens[1]);
                 
                 int neighbor_cost = neighbors[dvm.src_id]->cost;
-                map<string, int> remote_dv = dvm.dv;
                 
                 // refresh neighbor's timer
                 //                neighbors[dvm.src_id]->fail_timer.cancel();
@@ -400,7 +414,7 @@ private:
                 
                 bool has_change = false;
                 
-                for (auto& it : remote_dv)
+                for (auto& it : dvm.dv)
                 {
                     string dest_id = it.first;
                     int distance = it.second;
@@ -419,10 +433,12 @@ private:
                         mylog << "Change is caused by " << dvm.src_id << "'s DV: ";
                         mylog << "DV{ source id: " << dvm.src_id << ", " << flush;
                         mylog << "(destination, distance) pairs: " << flush;
+                        
                         for (auto &it : dvm.dv)
                         {
                             mylog << "(" << it.first << "," << it.second << ")";
                         }
+                        
                         mylog << " }." << endl;
                         mylog << "More Specifically, it is due to the distance of " << dvm.src_id << " to "
                         << dest_id << " is " << distance << "." << endl;
@@ -447,7 +463,6 @@ private:
                         mylog << "*******************------------------------*******************" << endl;
                         mylog << endl << endl;
                     }
-                    
                 }
                 
                 for (auto& it : RouteTable)
@@ -467,10 +482,12 @@ private:
                         mylog << "Change is caused by " << dvm.src_id << "'s DV: ";
                         mylog << "DV{ source id: " << dvm.src_id << ", " << flush;
                         mylog << "(destination, distance) pairs: " << flush;
+                        
                         for (auto &it : dvm.dv)
                         {
                             mylog << "(" << it.first << "," << it.second << ")";
                         }
+                        
                         mylog << " }." << endl;
                         mylog << "More Specifically, it is due to the distance of " << dvm.src_id << " to "
                         << dest_id << " is " << distance << "." << endl;
